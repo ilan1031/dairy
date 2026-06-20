@@ -596,6 +596,7 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("seller@ganeshdairy.com") }
     var password by remember { mutableStateOf("123456") }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -660,7 +661,16 @@ fun LoginScreen(
                     label = { Text("Password") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                tint = PrimaryMilk
+                            )
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                 )
 
@@ -702,7 +712,8 @@ fun RegisterScreen(
     var ownerNameInput by remember { mutableStateOf("Pooja Sharma") }
     var mobileInput by remember { mutableStateOf("9911223344") }
     var emailInput by remember { mutableStateOf("pooja@krishnadairy.com") }
-    var passwordInput by remember { mutableStateOf("password") }
+    var passwordInput by remember { mutableStateOf("123456") }
+    var passwordInputVisible by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -798,7 +809,17 @@ fun RegisterScreen(
                         label = { Text("Secret Password") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation()
+                        visualTransformation = if (passwordInputVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { passwordInputVisible = !passwordInputVisible }) {
+                                Icon(
+                                    imageVector = if (passwordInputVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (passwordInputVisible) "Hide password" else "Show password",
+                                    tint = PrimaryMilk
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                     )
                 }
 
@@ -2997,6 +3018,7 @@ fun SettingsTab(
     var mPhone by remember(mobileNumber) { mutableStateOf(mobileNumber) }
     var mEmail by remember(email) { mutableStateOf(email) }
     var mPass by remember(password) { mutableStateOf(password) }
+    var passVisible by remember { mutableStateOf(false) }
 
     // Milk rates editing variables
     var selectedEditType by remember { mutableStateOf("Cow Milk") }
@@ -3055,7 +3077,18 @@ fun SettingsTab(
                         onValueChange = { mPass = it },
                         label = { Text("ERP Security Password") },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        singleLine = true
+                        singleLine = true,
+                        visualTransformation = if (passVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { passVisible = !passVisible }) {
+                                Icon(
+                                    imageVector = if (passVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (passVisible) "Hide password" else "Show password",
+                                    tint = PrimaryMilk
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                     )
                     Button(
                         onClick = { onSaveProfile(bName, oName, mPhone, mEmail, mPass) },

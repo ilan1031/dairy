@@ -53,7 +53,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _emailAddress = MutableStateFlow(sharedPrefs.getString("email_address", "arun@gangadairy.com") ?: "arun@gangadairy.com")
     val emailAddress: StateFlow<String> = _emailAddress.asStateFlow()
 
-    private val _password = MutableStateFlow(sharedPrefs.getString("password", "password") ?: "password")
+    private val _password = MutableStateFlow(sharedPrefs.getString("password", "123456") ?: "123456")
     val password: StateFlow<String> = _password.asStateFlow()
 
     private val _isLightTheme = MutableStateFlow(sharedPrefs.getBoolean("is_light_theme", true)) // default to light theme (true)
