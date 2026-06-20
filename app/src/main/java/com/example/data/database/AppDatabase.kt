@@ -8,10 +8,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.dao.CustomerDao
 import com.example.data.dao.PriceDao
 import com.example.data.dao.SaleDao
+import com.example.data.dao.MilkInventoryDao
 import com.example.data.entity.CustomerEntity
 import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
+import com.example.data.entity.MilkInventoryEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,15 +23,17 @@ import kotlinx.coroutines.launch
         CustomerEntity::class,
         SaleEntity::class,
         PriceConfigEntity::class,
-        PriceLogEntity::class
+        PriceLogEntity::class,
+        MilkInventoryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun customerDao(): CustomerDao
     abstract fun saleDao(): SaleDao
     abstract fun priceDao(): PriceDao
+    abstract fun milkInventoryDao(): MilkInventoryDao
 
     companion object {
         @Volatile

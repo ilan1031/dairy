@@ -46,3 +46,12 @@ data class PriceLogEntity(
     val newPrice: Double,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "milk_inventory")
+data class MilkInventoryEntity(
+    @PrimaryKey val dateStr: String, // String representation e.g. "yyyy-MM-dd"
+    val cowLiters: Double,
+    val buffaloLiters: Double,
+    val a2Liters: Double,
+    val updatedAt: Long = System.currentTimeMillis()
+)

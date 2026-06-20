@@ -5,6 +5,7 @@ import com.example.data.entity.CustomerEntity
 import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
+import com.example.data.entity.MilkInventoryEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -68,4 +69,16 @@ interface PriceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPriceLog(log: PriceLogEntity)
+}
+
+@Dao
+interface MilkInventoryDao {
+    @Query("SELECT * FROM milk_inventory ORDER BY dateStr DESC")
+    fun getAllInventoryFlow(): Flow<List<MilkInventoryEntity>>
+
+    @Query("SELECT * FROM milk_inventory WHERE dateStr = :dateStr")
+    suspend fun getInventoryForDate(dateStr: String): MilkInventoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventory(inventory: MilkInventoryEntity)
 }

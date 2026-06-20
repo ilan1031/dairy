@@ -3,10 +3,12 @@ package com.example.data.repository
 import com.example.data.dao.CustomerDao
 import com.example.data.dao.PriceDao
 import com.example.data.dao.SaleDao
+import com.example.data.dao.MilkInventoryDao
 import com.example.data.entity.CustomerEntity
 import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
+import com.example.data.entity.MilkInventoryEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import java.util.UUID
@@ -14,16 +16,33 @@ import java.util.UUID
 class Repository(
     private val customerDao: CustomerDao,
     private val saleDao: SaleDao,
-    private val priceDao: PriceDao
+    private val priceDao: PriceDao,
+    private val milkInventoryDao: MilkInventoryDao
 ) {
     val customersFlow: Flow<List<CustomerEntity>> = customerDao.getAllCustomersFlow()
     val salesFlow: Flow<List<SaleEntity>> = saleDao.getAllSalesFlow()
     val pricesFlow: Flow<List<PriceConfigEntity>> = priceDao.getAllPricesFlow()
     val priceLogsFlow: Flow<List<PriceLogEntity>> = priceDao.getAllPriceLogsFlow()
+    val inventoryFlow: Flow<List<MilkInventoryEntity>> = milkInventoryDao.getAllInventoryFlow()
 
     val totalPendingFlow: Flow<Double?> = saleDao.getTotalPendingAmountFlow()
     val totalCollectedFlow: Flow<Double?> = saleDao.getTotalCollectedAmountFlow()
     val totalLitersFlow: Flow<Double?> = saleDao.getTotalLitersDistributedFlow()
+
+    suspend fun getInventoryForDate(dateStr: String): MilkInventoryEntity? {
+        return milkInventoryDao.getInventoryForDate(dateStr)
+    }
+
+    suspend fun insertOrUpdateInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String) {
+        val inventory = MilkInventoryEntity(
+            dateStr = dateStr,
+            cowLiters = cow,
+            buffaloLiters = buffalo,
+            a2Liters = a2,
+            updatedAt = System.currentTimeMillis()
+        )
+        milkInventoryDao.insertInventory(inventory)
+    }
 
     suspend fun getAllCustomers(): List<CustomerEntity> {
         return customerDao.getAllCustomers()
