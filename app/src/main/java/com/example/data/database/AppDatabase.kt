@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
         PriceLogEntity::class,
         MilkInventoryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

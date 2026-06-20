@@ -254,7 +254,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     )
                     items.forEach { item ->
                         NavigationBarItem(
-                            selected = activeTab == item.tabIndex,
+                            selected = activeTab == item.tabIndex || (item.tabIndex == 4 && activeTab == 5),
                             onClick = { activeTab = item.tabIndex },
                             icon = { Icon(item.icon, contentDescription = item.label) },
                             label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -300,6 +300,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         customers = customers,
                         prices = prices,
                         sales = sales,
+                        inventories = inventories,
                         onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
                             val status = if (pType == "PENDING") "PENDING" else "PAID"
                             val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
@@ -369,7 +370,23 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             currentScreenState = "SPLASH"
                             Toast.makeText(context, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                         },
-                        onNavigateToInventory = { showInventoryDialog = true }
+                        onNavigateToInventory = { activeTab = 5 }
+                    )
+                    5 -> InventoryTab(
+                        prices = prices,
+                        priceLogs = priceLogs,
+                        inventories = inventories,
+                        sales = sales,
+                        onAddCategory = { name, initialPrice ->
+                            viewModel.addNewMilkCategory(name, initialPrice)
+                        },
+                        onSaveInventoryStock = { cow, buffalo, a2, dateStr, rawCustom ->
+                            viewModel.saveMilkInventory(cow, buffalo, a2, dateStr, rawCustom)
+                        },
+                        onUpdatePrice = { brand, price ->
+                            viewModel.updatePrice(brand, price)
+                        },
+                        onBack = { activeTab = 4 }
                     )
                 }
 
@@ -428,15 +445,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     )
                 }
 
-                if (showInventoryDialog) {
-                    MilkInventoryManagerDialog(
-                        inventories = inventories,
-                        onDismiss = { showInventoryDialog = false },
-                        onSaveInventory = { cow, buffalo, a2, dateStr ->
-                            viewModel.saveMilkInventory(cow, buffalo, a2, dateStr)
-                        }
-                    )
-                }
+
             }
         }
     }
@@ -447,6 +456,50 @@ data class NavigationBarItemInfo(
     val icon: ImageVector,
     val tabIndex: Int
 )
+
+@Composable
+fun AbielanBrandingFooter(
+    textColor: Color = Color.Gray,
+    modifier: Modifier = Modifier
+) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+            .clickable {
+                try {
+                    uriHandler.openUri("https://www.abielan.in")
+                } catch (e: Exception) {
+                    // fallback
+                }
+            }
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Powered by ",
+                style = MaterialTheme.typography.labelMedium,
+                color = textColor.copy(alpha = 0.75f)
+            )
+            Text(
+                text = "abielan Tech.",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+            )
+        }
+        Text(
+            text = "www.abielan.in",
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor.copy(alpha = 0.6f)
+        )
+    }
+}
 
 // ==========================================
 // SPLASH SCREEN
@@ -526,6 +579,9 @@ fun SplashScreen(
             ) {
                 Text("Register Business", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            AbielanBrandingFooter(textColor = Color.White)
         }
     }
 }
@@ -626,6 +682,9 @@ fun LoginScreen(
                 TextButton(onClick = onNavigateRegister) {
                     Text("New Seller? Register Business Instead", color = PrimaryMilk, fontWeight = FontWeight.SemiBold)
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                AbielanBrandingFooter(textColor = PrimaryMilk)
             }
         }
     }
@@ -1152,6 +1211,7 @@ fun SalesTab(
     customers: List<CustomerEntity>,
     prices: List<PriceConfigEntity>,
     sales: List<SaleEntity>,
+    inventories: List<com.example.data.entity.MilkInventoryEntity>,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
     onQuickAddCustomer: (String, String, String) -> Unit
 ) {
@@ -1174,8 +1234,48 @@ fun SalesTab(
     }
     val nextAutoCustomerName = "Customer ${todaySalesCount + 1}"
 
+    val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()) }
+    val todayDateStr = remember { sdf.format(java.util.Date()) }
+
+    val todayInventory = remember(inventories, todayDateStr) {
+        inventories.find { it.dateStr == todayDateStr }
+    }
+
+    val todayStockMap = remember(todayInventory) {
+        val map = mutableMapOf<String, Double>()
+        if (todayInventory != null) {
+            map["Cow Milk"] = todayInventory.cowLiters
+            map["Buffalo Milk"] = todayInventory.buffaloLiters
+            map["A2 Milk"] = todayInventory.a2Liters
+            
+            val raw = todayInventory.customStocksRaw
+            if (!raw.isNullOrBlank()) {
+                raw.split(",").forEach { pair ->
+                    val parts = pair.split(":")
+                    if (parts.size == 2) {
+                        val valLiters = parts[1].toDoubleOrNull() ?: 0.0
+                        map[parts[0]] = valLiters
+                    }
+                }
+            }
+        } else {
+            map["Cow Milk"] = 0.0
+            map["Buffalo Milk"] = 0.0
+            map["A2 Milk"] = 0.0
+        }
+        map
+    }
+
+    val todaySalesMap = remember(sales, todayStart) {
+        sales.filter { it.createdAt >= todayStart }
+            .groupBy { it.milkType }
+            .mapValues { entry -> entry.value.sumOf { it.liters } }
+    }
+
     // Selected Transaction parameters
-    val milkTypes = listOf("Cow Milk", "Buffalo Milk", "A2 Milk", "Custom")
+    val milkTypes = remember(prices) {
+        prices.map { it.milkType } + "Custom"
+    }
     var selectedMilkType by remember { mutableStateOf("Cow Milk") }
     var customPriceInput by remember { mutableStateOf("50") }
 
@@ -1411,6 +1511,41 @@ fun SalesTab(
                             selectedLabelColor = PrimaryMilk,
                             selectedLeadingIconColor = PrimaryMilk
                         )
+                    )
+                }
+            }
+
+            val selectedStockLevel = todayStockMap[selectedMilkType] ?: 0.0
+            val selectedSoldToday = todaySalesMap[selectedMilkType] ?: 0.0
+            val selectedRemaining = (selectedStockLevel - selectedSoldToday).coerceAtLeast(0.0)
+            val isStockAlarm = selectedRemaining <= 0.0
+            val isStockWarning = selectedLiters > selectedRemaining && selectedMilkType != "Custom"
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (selectedMilkType == "Custom") Color.Gray.copy(alpha = 0.12f)
+                            else if (isStockAlarm) AlertRed.copy(alpha = 0.12f)
+                            else if (isStockWarning) PrimaryGold.copy(alpha = 0.12f)
+                            else OrganicGreen.copy(alpha = 0.12f)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (selectedMilkType == "Custom") "Custom category has no pre-set inventory stock"
+                               else "Stock Info: ${String.format(java.util.Locale.US, "%.2f", selectedRemaining)} L available today (Capacity: ${String.format(java.util.Locale.US, "%.2f", selectedStockLevel)} L, Sold: ${String.format(java.util.Locale.US, "%.2f", selectedSoldToday)} L)",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selectedMilkType == "Custom") Color.Gray
+                                else if (isStockAlarm) AlertRed
+                                else if (isStockWarning) PrimaryGold
+                                else OrganicGreen
                     )
                 }
             }
@@ -3246,6 +3381,8 @@ fun SettingsTab(
                     Text("Logout from ERP Console", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
+            AbielanBrandingFooter(textColor = PrimaryMilk)
             Spacer(modifier = Modifier.height(30.dp))
         }
     }
@@ -3347,206 +3484,382 @@ fun QuickAddCustomerDialog(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun MilkInventoryManagerDialog(
+fun InventoryTab(
+    prices: List<PriceConfigEntity>,
+    priceLogs: List<PriceLogEntity>,
     inventories: List<com.example.data.entity.MilkInventoryEntity>,
-    onDismiss: () -> Unit,
-    onSaveInventory: (Double, Double, Double, String) -> Unit
+    sales: List<SaleEntity>,
+    onAddCategory: (String, Double) -> Unit,
+    onSaveInventoryStock: (cow: Double, buffalo: Double, a2: Double, String, String) -> Unit,
+    onUpdatePrice: (String, Double) -> Unit,
+    onBack: () -> Unit
 ) {
-    var cowInput by remember { mutableStateOf("") }
-    var buffaloInput by remember { mutableStateOf("") }
-    var a2Input by remember { mutableStateOf("") }
-
+    val context = LocalContext.current
     val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()) }
     var dateStringInput by remember { mutableStateOf(sdf.format(java.util.Date())) }
+    val dateFormat = remember { java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault()) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.9f)
-                .padding(vertical = 12.dp),
-            border = BorderStroke(1.dp, PrimaryMilk)
+    // Dialog trigger for adding a custom category
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
+    var newCategoryPrice by remember { mutableStateOf("") }
+
+    // State maps for current active inputs
+    val stockInputs = remember { mutableStateMapOf<String, String>() }
+    val rateInputs = remember { mutableStateMapOf<String, String>() }
+
+    // Watch today's date and inventory to populate existing stock values
+    val currentSelectedInventory = remember(inventories, dateStringInput) {
+        inventories.find { it.dateStr == dateStringInput }
+    }
+
+    LaunchedEffect(currentSelectedInventory) {
+        stockInputs.clear()
+        if (currentSelectedInventory != null) {
+            stockInputs["Cow Milk"] = if (currentSelectedInventory.cowLiters > 0) currentSelectedInventory.cowLiters.toString() else ""
+            stockInputs["Buffalo Milk"] = if (currentSelectedInventory.buffaloLiters > 0) currentSelectedInventory.buffaloLiters.toString() else ""
+            stockInputs["A2 Milk"] = if (currentSelectedInventory.a2Liters > 0) currentSelectedInventory.a2Liters.toString() else ""
+            
+            val raw = currentSelectedInventory.customStocksRaw
+            if (!raw.isNullOrBlank()) {
+                raw.split(",").forEach { pair ->
+                    val parts = pair.split(":")
+                    if (parts.size == 2) {
+                        stockInputs[parts[0]] = parts[1]
+                    }
+                }
+            }
+        }
+    }
+
+    // Map previously configured category rates / base prices when they load
+    LaunchedEffect(prices) {
+        prices.forEach { config ->
+            if (!rateInputs.containsKey(config.milkType)) {
+                rateInputs[config.milkType] = String.format(java.util.Locale.US, "%.1f", config.currentPrice)
+            }
+        }
+    }
+
+    // Today's total sold per category
+    val todayStart = remember(sales) {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        cal.timeInMillis
+    }
+
+    val todaySalesMap = remember(sales, todayStart) {
+        sales.filter { it.createdAt >= todayStart }
+            .groupBy { it.milkType }
+            .mapValues { entry -> entry.value.sumOf { it.liters } }
+    }
+
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+    ) {
+        // HEADER ROW WITH BACK BUTTON
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.padding(end = 8.dp)
             ) {
-                // Header
-                Row(
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back to Settings",
+                    tint = PrimaryMilk
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "🥛 Stock & Catalog Register",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = PrimaryMilk
+                )
+                Text(
+                    "Set daily milk volume capability and manage category catalog",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+
+            Button(
+                onClick = { showAddCategoryDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("New", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // DAILY STOCKING MANAGER FORM
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Configure Inventory & Price Catalog",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryMilk
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Set today's collections (liters) and dynamic baseline rate per liter.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = dateStringInput,
+                    onValueChange = { dateStringInput = it },
+                    label = { Text("Log Date (YYYY-MM-DD)") },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            modifier = Modifier.size(36.dp),
-                            shape = CircleShape,
-                            color = PrimaryMilk.copy(alpha = 0.15f)
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = PrimaryMilk)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Iterate over existing categories loaded dynamically!
+                prices.forEach { config ->
+                    val type = config.milkType
+                    val currentVal = stockInputs[type] ?: ""
+                    val rateVal = rateInputs[type] ?: ""
+                    val soldToday = todaySalesMap[type] ?: 0.0
+
+                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = type,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PrimaryMilk
+                            )
+
+                            Text(
+                                text = "Sold Today: ${String.format(java.util.Locale.US, "%.1f", soldToday)} L",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = currentVal,
+                                onValueChange = { stockInputs[type] = it },
+                                label = { Text("Stock available Today (L)") },
+                                placeholder = { Text("e.g. 100") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = PrimaryMilk,
+                                    unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = rateVal,
+                                onValueChange = { rateInputs[type] = it },
+                                label = { Text("Rate per Liter (₹)") },
+                                placeholder = { Text("e.g. 50") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = PrimaryMilk,
+                                    unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        val cow = stockInputs["Cow Milk"]?.toDoubleOrNull() ?: 0.0
+                        val buf = stockInputs["Buffalo Milk"]?.toDoubleOrNull() ?: 0.0
+                        val a2 = stockInputs["A2 Milk"]?.toDoubleOrNull() ?: 0.0
+
+                        val customPairs = stockInputs.filterKeys { it != "Cow Milk" && it != "Buffalo Milk" && it != "A2 Milk" }
+                            .map { "${it.key}:${it.value.toDoubleOrNull() ?: 0.0}" }
+                            .joinToString(",")
+
+                        // Save the stock levels
+                        onSaveInventoryStock(cow, buf, a2, dateStringInput, customPairs)
+
+                        // Save the edited rates/prices in database dynamically!
+                        var priceConfigUpdated = false
+                        prices.forEach { config ->
+                            val enteredRateStr = rateInputs[config.milkType] ?: ""
+                            val enteredRate = enteredRateStr.toDoubleOrNull()
+                            if (enteredRate != null && enteredRate != config.currentPrice) {
+                                onUpdatePrice(config.milkType, enteredRate)
+                                priceConfigUpdated = true
+                            }
+                        }
+
+                        val feedbackMsg = if (priceConfigUpdated) {
+                            "Stock updated and rates synchronized for $dateStringInput!"
+                        } else {
+                            "Stock levels recorded in database ledger."
+                        }
+                        Toast.makeText(context, feedbackMsg, Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Lock & Log Today's Registers", fontWeight = FontWeight.ExtraBold, color = Color.White)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // MANAGED MILK CATEGORY CATALOG & HISTORICAL DATA
+        Text(
+            "📋 Registered Categories & Previous Price Logs",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = PrimaryMilk
+        )
+        Text(
+            "Track historical pricing logs and previous baseline price alterations.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (prices.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Text("No milk grades catalog found.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            prices.forEach { config ->
+                val matchingLogs = priceLogs.filter { it.milkType == config.milkType }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.List,
+                                    imageVector = Icons.Default.WaterDrop,
                                     contentDescription = null,
                                     tint = PrimaryMilk,
                                     modifier = Modifier.size(20.dp)
                                 )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = config.milkType,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = PrimaryMilk
+                                )
                             }
+                            Text(
+                                text = "Current Rate: ₹${config.currentPrice} / L",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = OrganicGreen
+                            )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            "Milk Inventory Stock",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            "Previous Rate Logs History:",
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.DarkGray
                         )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = Color.Gray
-                        )
-                    }
-                }
+                        Spacer(modifier = Modifier.height(4.dp))
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Scrollable content inside
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(scrollState)
-                ) {
-                    Text(
-                        "Log Daily Collections (Liters)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryMilk
-                    )
-                    Text(
-                        "Track internal milk availability before selling to buyers.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = dateStringInput,
-                        onValueChange = { dateStringInput = it },
-                        label = { Text("Stock Log Date (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = cowInput,
-                        onValueChange = { cowInput = it },
-                        label = { Text("Cow Milk Available (L)") },
-                        placeholder = { Text("e.g. 150.25") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                    )
-
-                    OutlinedTextField(
-                        value = buffaloInput,
-                        onValueChange = { buffaloInput = it },
-                        label = { Text("Buffalo Milk Available (L)") },
-                        placeholder = { Text("e.g. 120") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                    )
-
-                    OutlinedTextField(
-                        value = a2Input,
-                        onValueChange = { a2Input = it },
-                        label = { Text("A2 Milk Available (L)") },
-                        placeholder = { Text("e.g. 55.5") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                    )
-
-                    Button(
-                        onClick = {
-                            val cow = cowInput.toDoubleOrNull() ?: 0.0
-                            val buf = buffaloInput.toDoubleOrNull() ?: 0.0
-                            val a2 = a2Input.toDoubleOrNull() ?: 0.0
-                            if (cow > 0 || buf > 0 || a2 > 0) {
-                                onSaveInventory(cow, buf, a2, dateStringInput)
-                                cowInput = ""
-                                buffaloInput = ""
-                                a2Input = ""
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Save Today's Stock", fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        "Historical Stock Registers",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (inventories.isEmpty()) {
-                        Text(
-                            "No stock logs recorded yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-                    } else {
-                        inventories.forEach { stock ->
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            stock.dateStr,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = PrimaryMilk
-                                        )
-                                        val total = stock.cowLiters + stock.buffaloLiters + stock.a2Liters
-                                        Text(
-                                            "Total: ${total} L",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OrganicGreen
-                                        )
+                        if (matchingLogs.isEmpty()) {
+                            Text(
+                                "No previous pricing modifications found. Brand remains at original baseline of ₹${config.currentPrice}.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        } else {
+                            matchingLogs.sortedByDescending { it.timestamp }.forEach { log ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val dateStr = try {
+                                        dateFormat.format(java.util.Date(log.timestamp))
+                                    } catch (e: Exception) {
+                                        "N/A"
                                     }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        val itemStyle = MaterialTheme.typography.labelSmall
-                                        Text("Cow: ${stock.cowLiters}L", style = itemStyle, modifier = Modifier.weight(1f), color = Color.Gray)
-                                        Text("Buf: ${stock.buffaloLiters}L", style = itemStyle, modifier = Modifier.weight(1f), color = Color.Gray)
-                                        Text("A2: ${stock.a2Liters}L", style = itemStyle, modifier = Modifier.weight(1f), color = Color.Gray)
-                                    }
+                                    Text(
+                                        text = dateStr,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = "₹${log.oldPrice} ➔ ₹${log.newPrice}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryMilk
+                                    )
                                 }
                             }
                         }
@@ -3554,5 +3867,180 @@ fun MilkInventoryManagerDialog(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // HISTORICAL REGISTERS SECTION
+        Text(
+            "📜 Historical Stock Registers",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = PrimaryMilk
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (inventories.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Text("No stock logs recorded in secure ledger database.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            inventories.forEach { stock ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                stock.dateStr,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PrimaryMilk
+                            )
+                            val customSum = if (!stock.customStocksRaw.isNullOrBlank()) {
+                                stock.customStocksRaw.split(",").sumOf { pair ->
+                                    pair.split(":").getOrNull(1)?.toDoubleOrNull() ?: 0.0
+                                }
+                            } else 0.0
+                            val total = stock.cowLiters + stock.buffaloLiters + stock.a2Liters + customSum
+                            Text(
+                                "Total: ${String.format(java.util.Locale.US, "%.1f", total)} Liters",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OrganicGreen
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Display details layout
+                        val details = remember(stock) {
+                            val list = mutableListOf<String>()
+                            if (stock.cowLiters > 0) list.add("Cow: ${stock.cowLiters}L")
+                            if (stock.buffaloLiters > 0) list.add("Buffalo: ${stock.buffaloLiters}L")
+                            if (stock.a2Liters > 0) list.add("A2: ${stock.a2Liters}L")
+                            if (!stock.customStocksRaw.isNullOrBlank()) {
+                                stock.customStocksRaw.split(",").forEach { pair ->
+                                    val parts = pair.split(":")
+                                    if (parts.size == 2 && (parts[1].toDoubleOrNull() ?: 0.0) > 0.0) {
+                                        list.add("${parts[0]}: ${parts[1]}L")
+                                    }
+                                }
+                            }
+                            list
+                        }
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            details.forEach { text ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(text, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(80.dp))
+    }
+
+    // ADD DYNAMIC CATEGORY DIALOG
+    if (showAddCategoryDialog) {
+        Dialog(onDismissRequest = { showAddCategoryDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                border = BorderStroke(1.dp, PrimaryMilk)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Create New Milk Category",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryMilk
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Configure a separate milk grade to catalog sales logs.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Category Name (e.g. Goat Milk)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = newCategoryPrice,
+                        onValueChange = { newCategoryPrice = it },
+                        label = { Text("Baseline Rate per Liter (₹)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        TextButton(onClick = { showAddCategoryDialog = false }) {
+                            Text("Cancel", color = AlertRed)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (newCategoryName.isNotBlank()) {
+                                    val price = newCategoryPrice.toDoubleOrNull() ?: 50.0
+                                    onAddCategory(newCategoryName, price)
+                                    newCategoryName = ""
+                                    newCategoryPrice = ""
+                                    showAddCategoryDialog = false
+                                } else {
+                                    Toast.makeText(context, "Please write a name", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk)
+                        ) {
+                            Text("Add Category")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
+

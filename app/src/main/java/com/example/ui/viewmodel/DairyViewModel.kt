@@ -300,9 +300,15 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun saveMilkInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String) {
+    fun saveMilkInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.insertOrUpdateInventory(cow, buffalo, a2, dateStr)
+            repository.insertOrUpdateInventory(cow, buffalo, a2, dateStr, customStocksRaw)
+        }
+    }
+
+    fun addNewMilkCategory(milkType: String, basePrice: Double = 50.0) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateMilkPrice(milkType, basePrice)
         }
     }
 }

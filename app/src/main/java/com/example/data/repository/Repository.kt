@@ -33,12 +33,13 @@ class Repository(
         return milkInventoryDao.getInventoryForDate(dateStr)
     }
 
-    suspend fun insertOrUpdateInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String) {
+    suspend fun insertOrUpdateInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "") {
         val inventory = MilkInventoryEntity(
             dateStr = dateStr,
             cowLiters = cow,
             buffaloLiters = buffalo,
             a2Liters = a2,
+            customStocksRaw = customStocksRaw,
             updatedAt = System.currentTimeMillis()
         )
         milkInventoryDao.insertInventory(inventory)

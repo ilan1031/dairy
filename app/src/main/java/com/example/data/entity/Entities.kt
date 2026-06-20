@@ -53,5 +53,6 @@ data class MilkInventoryEntity(
     val cowLiters: Double,
     val buffaloLiters: Double,
     val a2Liters: Double,
+    val customStocksRaw: String = "", // e.g. "Goat Milk:50.0,Camel Milk:30.0"
     val updatedAt: Long = System.currentTimeMillis()
 )
