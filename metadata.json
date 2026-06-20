@@ -1,0 +1,6 @@
+{
+  "name": "DairySync",
+  "description": "Offline-first dairy management ledger and sync engine for milk vendors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
