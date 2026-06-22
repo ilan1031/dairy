@@ -327,13 +327,14 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             )
                             showSuccessSavedToast = true
                         },
-                        onQuickAddCustomer = { name, phone, pref ->
-                            viewModel.addNewCustomer(name, phone, pref)
+                        onQuickAddCustomer = { id, name, phone, pref ->
+                            viewModel.addNewCustomer(name, phone, pref, id)
                         }
                     )
                     2 -> CustomersTab(
                         customers = customers,
                         sales = sales,
+                        prices = prices,
                         selectedCustomer = selectedCustomerForProfile,
                         onSelectCustomer = { selectedCustomerForProfile = it },
                         onUpdateCustomerDetails = { id, name, phone, qr, addr, notes ->
@@ -343,7 +344,23 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             viewModel.markAsPaid(sale.id, pType)
                         },
                         onTriggerQuickAdd = { showQuickCustomerDialog = true },
-                        onBackToDashboard = { activeTab = 0 }
+                        onBackToDashboard = { activeTab = 0 },
+                        onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
+                            val status = if (pType == "PENDING") "PENDING" else "PAID"
+                            val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
+                            shouldAutoPreviewNext = true
+                            viewModel.addSale(
+                                customerId = customerId,
+                                customerName = customerName,
+                                milkType = milkType,
+                                liters = liters,
+                                ratePerLiter = finalRate,
+                                paymentStatus = status,
+                                paymentType = resolvedPaymentType
+                            )
+                            showSuccessSavedToast = true
+                        },
+                        businessName = businessName
                     )
                     3 -> BillsTab(
                         sales = sales,
@@ -1468,7 +1485,7 @@ fun SalesTab(
     sales: List<SaleEntity>,
     inventories: List<com.example.data.entity.MilkInventoryEntity>,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
-    onQuickAddCustomer: (String, String, String) -> Unit
+    onQuickAddCustomer: (String, String, String, String) -> Unit
 ) {
     val context = LocalContext.current
     var inputQuery by remember { mutableStateOf("") }
@@ -1868,8 +1885,9 @@ fun SalesTab(
                                     selectedCustomer = existing
                                     inputQuery = existing.name
                                 } else {
-                                    onQuickAddCustomer(nextAutoCustomerName, "", "UPI")
-                                    selectedCustomer = CustomerEntity(id = nextAutoCustomerName, name = nextAutoCustomerName, phone = "", qrPreference = "UPI")
+                                    val newId = java.util.UUID.randomUUID().toString()
+                                    onQuickAddCustomer(newId, nextAutoCustomerName, "", "UPI")
+                                    selectedCustomer = CustomerEntity(id = newId, name = nextAutoCustomerName, phone = "", qrPreference = "UPI")
                                     inputQuery = nextAutoCustomerName
                                 }
                                 isDropdownExpanded = false
@@ -1960,9 +1978,10 @@ fun SalesTab(
                                     Button(
                                         onClick = {
                                             if (directRegName.isNotBlank()) {
-                                                onQuickAddCustomer(directRegName, directRegPhone, "UPI")
+                                                val newId = java.util.UUID.randomUUID().toString()
+                                                onQuickAddCustomer(newId, directRegName, directRegPhone.ifBlank { "" }, "UPI")
                                                 val createdCust = CustomerEntity(
-                                                    id = directRegName, // DAO fallback fallback
+                                                    id = newId,
                                                     name = directRegName,
                                                     phone = directRegPhone.ifBlank { null },
                                                     qrPreference = "UPI"
@@ -3631,7 +3650,7 @@ fun BillsTab(
 // ==========================================
 // EXPORT & SHARE REAL PDF HELPERS
 // ==========================================
-fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity, businessName: String, isShare: Boolean) {
+fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity, businessName: String, isShare: Boolean, whatsAppNumber: String? = null) {
     try {
         val pdfDocument = android.graphics.pdf.PdfDocument()
         val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(400, 750, 1).create()
@@ -3759,7 +3778,44 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
             cacheFile
         )
 
-        if (isShare) {
+        if (!whatsAppNumber.isNullOrBlank()) {
+            var cleanPhone = whatsAppNumber.filter { it.isDigit() }
+            if (cleanPhone.length == 10) {
+                cleanPhone = "91$cleanPhone"
+            }
+            try {
+                val whatsappIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                    setPackage("com.whatsapp")
+                    putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                    putExtra(android.content.Intent.EXTRA_TEXT, "Hello, here is your dairy receipt of ₹${sale.totalAmount.toInt()} from $businessName.")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(whatsappIntent)
+            } catch (ex: Exception) {
+                try {
+                    val whatsappBusinessIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                        setPackage("com.whatsapp.w4b")
+                        putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Hello, here is your dairy receipt of ₹${sale.totalAmount.toInt()} from $businessName.")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(whatsappBusinessIntent)
+                } catch (exNested: Exception) {
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Hello, here is your dairy receipt of ₹${sale.totalAmount.toInt()} from $businessName.")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Slip PDF via"))
+                    android.widget.Toast.makeText(context, "WhatsApp not installed. Opened default share dialog.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        } else if (isShare) {
             val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
@@ -3779,6 +3835,213 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
         postPdfNotification(context, cacheFile, pdfUri)
     } catch (ex: Exception) {
         android.widget.Toast.makeText(context, "PDF failed: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
+fun shareSelectedSalesAsText(context: android.content.Context, sales: List<SaleEntity>, customerName: String, businessName: String) {
+    val sb = StringBuilder()
+    sb.append("*$businessName - Statement*\n")
+    sb.append("Customer: $customerName\n")
+    sb.append("----------------------------\n")
+    var totalQty = 0.0
+    var totalAmt = 0.0
+    sales.sortedByDescending { it.createdAt }.forEach { s ->
+        val dateStr = SimpleDateFormat("dd MMM yy", Locale.getDefault()).format(Date(s.createdAt))
+        sb.append("• $dateStr: ${s.liters}L ${s.milkType} = ₹${s.totalAmount.toInt()} (${s.paymentStatus})\n")
+        totalQty += s.liters
+        totalAmt += s.totalAmount
+    }
+    sb.append("----------------------------\n")
+    sb.append("*Total Qty:* ${String.format(java.util.Locale.US, "%.1f", totalQty)} L\n")
+    sb.append("*Consolidated Due:* ₹${totalAmt.toInt()}\n")
+    sb.append("\nThank you for choosing us!")
+
+    val sendIntent = android.content.Intent().apply {
+        action = android.content.Intent.ACTION_SEND
+        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+        type = "text/plain"
+    }
+    context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Statement via"))
+}
+
+fun exportAndShareSelectedSalesPdf(
+    context: android.content.Context,
+    salesList: List<SaleEntity>,
+    customerName: String,
+    phoneNumber: String?,
+    businessName: String,
+    isShare: Boolean,
+    whatsAppNumber: String? = null
+) {
+    try {
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val fileHeight = (300 + (salesList.size * 30)).coerceAtLeast(600).coerceAtMost(1200)
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(450, fileHeight, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+        val paint = android.graphics.Paint()
+
+        paint.color = 0xFF1E3A8A.toInt()
+        canvas.drawRect(0f, 0f, 450f, 100f, paint)
+
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.textSize = 18f
+        paint.isFakeBoldText = true
+        paint.textAlign = android.graphics.Paint.Align.CENTER
+        canvas.drawText(businessName.uppercase(Locale.getDefault()), 225f, 40f, paint)
+
+        paint.textSize = 11f
+        paint.isFakeBoldText = false
+        canvas.drawText("CONSOLIDATED ACCOUNT LEDGER", 225f, 65f, paint)
+
+        val dateStatement = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())
+        paint.textSize = 8f
+        paint.color = 0xFFE2E8F0.toInt()
+        canvas.drawText("Generated on: $dateStatement", 225f, 85f, paint)
+
+        paint.textAlign = android.graphics.Paint.Align.LEFT
+        paint.color = 0xFF111827.toInt()
+        paint.textSize = 10f
+
+        paint.isFakeBoldText = true
+        canvas.drawText("Customer Details:", 20f, 130f, paint)
+        paint.isFakeBoldText = false
+        canvas.drawText("Name: $customerName", 20f, 148f, paint)
+        canvas.drawText("Phone: ${phoneNumber ?: "N/A"}", 20f, 164f, paint)
+
+        paint.color = 0xFFD1D5DB.toInt()
+        canvas.drawLine(20f, 180f, 430f, 180f, paint)
+
+        paint.color = 0xFF374151.toInt()
+        paint.isFakeBoldText = true
+        paint.textSize = 9f
+        canvas.drawText("Date", 20f, 200f, paint)
+        canvas.drawText("Items (Milk Category)", 100f, 200f, paint)
+        canvas.drawText("Qty (L)", 260f, 200f, paint)
+        canvas.drawText("Rate", 320f, 200f, paint)
+        paint.textAlign = android.graphics.Paint.Align.RIGHT
+        canvas.drawText("Total", 430f, 200f, paint)
+
+        paint.color = 0xFF9CA3AF.toInt()
+        canvas.drawLine(20f, 208f, 430f, 208f, paint)
+
+        var currentY = 225f
+        paint.isFakeBoldText = false
+        paint.color = 0xFF4B5563.toInt()
+
+        var totalQty = 0.0
+        var totalCost = 0.0
+
+        val sortedSalesList = salesList.sortedByDescending { it.createdAt }
+        sortedSalesList.forEach { sale ->
+            val shortDate = SimpleDateFormat("dd MMM yy", Locale.getDefault()).format(Date(sale.createdAt))
+            paint.textAlign = android.graphics.Paint.Align.LEFT
+            canvas.drawText(shortDate, 20f, currentY, paint)
+            canvas.drawText(sale.milkType, 100f, currentY, paint)
+            canvas.drawText("${sale.liters} L", 260f, currentY, paint)
+            canvas.drawText("₹${sale.ratePerLiter.toInt()}", 320f, currentY, paint)
+
+            paint.textAlign = android.graphics.Paint.Align.RIGHT
+            canvas.drawText("₹${sale.totalAmount.toInt()}", 430f, currentY, paint)
+
+            totalQty += sale.liters
+            totalCost += sale.totalAmount
+
+            currentY += 24f
+        }
+
+        paint.color = 0xFFD1D5DB.toInt()
+        canvas.drawLine(20f, currentY - 10f, 430f, currentY - 10f, paint)
+
+        currentY += 10f
+        paint.color = 0xFF111827.toInt()
+        paint.isFakeBoldText = true
+        paint.textAlign = android.graphics.Paint.Align.LEFT
+        canvas.drawText("Grand Summary:", 20f, currentY, paint)
+
+        paint.textAlign = android.graphics.Paint.Align.RIGHT
+        canvas.drawText("Total Qty: ${String.format(java.util.Locale.US, "%.1f", totalQty)} L", 240f, currentY, paint)
+        canvas.drawText("Total Sum: ₹${totalCost.toInt()}", 430f, currentY, paint)
+
+        currentY += 40f
+        paint.textAlign = android.graphics.Paint.Align.CENTER
+        paint.textSize = 8f
+        paint.isFakeBoldText = false
+        paint.color = 0xFF9CA3AF.toInt()
+        canvas.drawText("This statement is digitally generated and validated. Thank you!", 225f, currentY, paint)
+
+        pdfDocument.finishPage(page)
+
+        val cacheFile = java.io.File(context.cacheDir, "STMT-${customerName.filter { it.isLetterOrDigit() }.take(4).uppercase(Locale.getDefault())}-${System.currentTimeMillis() % 100000}.pdf")
+        val stream = java.io.FileOutputStream(cacheFile)
+        pdfDocument.writeTo(stream)
+        stream.close()
+        pdfDocument.close()
+
+        val pdfUri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            cacheFile
+        )
+
+        if (!whatsAppNumber.isNullOrBlank()) {
+            var cleanPhone = whatsAppNumber.filter { it.isDigit() }
+            if (cleanPhone.length == 10) {
+                cleanPhone = "91$cleanPhone"
+            }
+            try {
+                val whatsappIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                    setPackage("com.whatsapp")
+                    putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                    putExtra(android.content.Intent.EXTRA_TEXT, "Hello $customerName, here is your consolidated statement of ₹${totalCost.toInt()} from $businessName.")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(whatsappIntent)
+            } catch (ex: Exception) {
+                try {
+                    val whatsappBusinessIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                        setPackage("com.whatsapp.w4b")
+                        putExtra("jid", "$cleanPhone@s.whatsapp.net")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Hello $customerName, here is your consolidated statement of ₹${totalCost.toInt()} from $businessName.")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(whatsappBusinessIntent)
+                } catch (exNested: Exception) {
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Hello $customerName, here is your consolidated statement of ₹${totalCost.toInt()} from $businessName.")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share PDF Statement via"))
+                    android.widget.Toast.makeText(context, "WhatsApp not installed. Opened standard share chooser.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        } else if (isShare) {
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(android.content.Intent.EXTRA_STREAM, pdfUri)
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "Consolidated Statement - $customerName")
+                putExtra(android.content.Intent.EXTRA_TEXT, "Hello, here is your consolidated statement of ₹${totalCost.toInt()} from $businessName.")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Ledger Statement"))
+        } else {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(pdfUri, "application/pdf")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NO_HISTORY)
+            }
+            context.startActivity(android.content.Intent.createChooser(viewIntent, "Open / Print Statement PDF via"))
+        }
+
+        postPdfNotification(context, cacheFile, pdfUri)
+    } catch (ex: Exception) {
+        android.widget.Toast.makeText(context, "Failed to compile statement: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
@@ -3836,7 +4099,8 @@ fun InvoiceDetailDialog(
     sale: SaleEntity,
     businessName: String,
     onDismiss: () -> Unit,
-    onMarkAsPaid: ((String, String) -> Unit)? = null
+    onMarkAsPaid: ((String, String) -> Unit)? = null,
+    whatsAppNumber: String? = null
 ) {
     val context = LocalContext.current
     var selectedSettleMode by remember { mutableStateOf("CASH") }
@@ -4019,7 +4283,7 @@ fun InvoiceDetailDialog(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Actions: Share, PDF, WhatsApp simulation
+                // Actions: Share, PDF, WhatsApp direct
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4035,6 +4299,23 @@ fun InvoiceDetailDialog(
                         Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Share PDF", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+
+                    Button(
+                        onClick = {
+                            if (whatsAppNumber.isNullOrBlank()) {
+                                android.widget.Toast.makeText(context, "No WhatsApp number configured for this customer.", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                exportAndShareInvoicePdf(context, sale, businessName, isShare = true, whatsAppNumber = whatsAppNumber)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send via WhatsApp", tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("WhatsApp", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
 
                     Button(
@@ -6216,12 +6497,15 @@ fun InventoryTab(
 fun CustomersTab(
     customers: List<CustomerEntity>,
     sales: List<SaleEntity>,
+    prices: List<PriceConfigEntity>,
     selectedCustomer: CustomerEntity?,
     onSelectCustomer: (CustomerEntity?) -> Unit,
     onUpdateCustomerDetails: (String, String, String?, String, String?, String?) -> Unit,
     onSettlePayment: (SaleEntity, String) -> Unit,
     onTriggerQuickAdd: () -> Unit,
-    onBackToDashboard: () -> Unit
+    onBackToDashboard: () -> Unit,
+    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
+    businessName: String = "Krishna Milk Depot"
 ) {
     var searchQuery by remember { mutableStateOf("") }
     
@@ -6229,9 +6513,12 @@ fun CustomersTab(
         CustomerProfileView(
             customer = selectedCustomer,
             sales = sales,
+            prices = prices,
             onBack = { onSelectCustomer(null) },
             onUpdateDetails = onUpdateCustomerDetails,
-            onSettlePayment = onSettlePayment
+            onSettlePayment = onSettlePayment,
+            onAddSale = onAddSale,
+            businessName = businessName
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -6478,14 +6765,17 @@ fun CustomersTab(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CustomerProfileView(
     customer: CustomerEntity,
     sales: List<SaleEntity>,
+    prices: List<PriceConfigEntity>,
     onBack: () -> Unit,
     onUpdateDetails: (String, String, String?, String, String?, String?) -> Unit,
-    onSettlePayment: (SaleEntity, String) -> Unit
+    onSettlePayment: (SaleEntity, String) -> Unit,
+    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
+    businessName: String = "Krishna Milk Depot"
 ) {
     val context = LocalContext.current
     
@@ -6523,12 +6813,18 @@ fun CustomerProfileView(
         customerSales.sumOf { it.liters }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    var showQuickAddSaleDialog by remember { mutableStateOf(false) }
+    var selectedInvoiceForProfileDetail by remember { mutableStateOf<SaleEntity?>(null) }
+    var isMultiSelectMode by remember { mutableStateOf(false) }
+    val selectedSales = remember { mutableStateListOf<SaleEntity>() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // Appbar Back & Title
         item {
             Row(
@@ -6891,11 +7187,41 @@ fun CustomerProfileView(
                     val dateStr = remember(sale.createdAt) {
                         SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(sale.createdAt))
                     }
+                    val isSelected = selectedSales.contains(sale)
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onLongClick = {
+                                    if (!isMultiSelectMode) {
+                                        isMultiSelectMode = true
+                                        selectedSales.clear()
+                                        selectedSales.add(sale)
+                                    }
+                                },
+                                onClick = {
+                                    if (isMultiSelectMode) {
+                                        if (selectedSales.contains(sale)) {
+                                            selectedSales.remove(sale)
+                                            if (selectedSales.isEmpty()) {
+                                                isMultiSelectMode = false
+                                            }
+                                        } else {
+                                            selectedSales.add(sale)
+                                        }
+                                    } else {
+                                        selectedInvoiceForProfileDetail = sale
+                                    }
+                                }
+                            ),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) PrimaryMilk.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                        ),
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                        border = BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) PrimaryMilk else Color.LightGray.copy(alpha = 0.4f)
+                        )
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -6948,7 +7274,7 @@ fun CustomerProfileView(
                                                 else AlertRed.copy(alpha = 0.12f)
                                             )
                                             .clickable {
-                                                if (sale.paymentStatus == "PENDING") {
+                                                if (sale.paymentStatus == "PENDING" && !isMultiSelectMode) {
                                                     onSettlePayment(sale, customer.qrPreference)
                                                     Toast.makeText(context, "Settle transaction update: Success", Toast.LENGTH_SHORT).show()
                                                 }
@@ -6965,20 +7291,57 @@ fun CustomerProfileView(
                                 }
                             }
 
-                            if (!sale.location.isNullOrBlank() && sale.location != "Simulated Location (GPS Locked)") {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                                Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(14.dp))
+                                    Icon(
+                                        imageVector = if (isMultiSelectMode) {
+                                            if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked
+                                        } else {
+                                            Icons.Default.Receipt
+                                        },
+                                        contentDescription = "Selection Status",
+                                        tint = if (isSelected) OrganicGreen else PrimaryMilk,
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = sale.location,
+                                        text = if (isMultiSelectMode) {
+                                            if (isSelected) "Selected" else "Tap to select"
+                                        } else {
+                                            "Tap to view bill / WhatsApp"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color.Gray,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        color = if (isSelected) OrganicGreen else PrimaryMilk,
+                                        fontWeight = FontWeight.Bold
                                     )
+                                }
+
+                                if (!sale.location.isNullOrBlank() && sale.location != "Simulated Location (GPS Locked)") {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = null,
+                                            tint = PrimaryGold,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Text(
+                                            text = sale.location,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.Gray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 120.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -6990,6 +7353,417 @@ fun CustomerProfileView(
         item {
             Spacer(modifier = Modifier.height(80.dp))
         }
+    }
+
+    // Floating Action Button for Quick Sale inside Customer Profile View (only if not in multi-select mode)
+    if (!isMultiSelectMode) {
+        FloatingActionButton(
+            onClick = { showQuickAddSaleDialog = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = 80.dp)
+                .testTag("quick_add_sale_profile_fab"),
+            containerColor = PrimaryMilk,
+            contentColor = Color.White,
+            shape = CircleShape
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Quick Add Sale Log", modifier = Modifier.size(28.dp))
+        }
+    } else {
+        // Multi-select Consolidated Share / Export Ribbon
+        Card(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 24.dp)
+                .padding(bottom = 60.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${selectedSales.size} bill(s) selected",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    val sumLiters = selectedSales.sumOf { it.liters }
+                    val sumAmount = selectedSales.sumOf { it.totalAmount }
+                    Text(
+                        text = "${String.format(java.util.Locale.US, "%.1f", sumLiters)}L • ₹${sumAmount.toInt()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (selectedSales.isEmpty()) {
+                                Toast.makeText(context, "Select at least one record to share.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                shareSelectedSalesAsText(context, selectedSales, customer.name, businessName)
+                            }
+                        },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface, CircleShape)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Share text summary", tint = PrimaryMilk)
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (selectedSales.isEmpty()) {
+                                Toast.makeText(context, "Select at least one record to export.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                exportAndShareSelectedSalesPdf(
+                                    context = context,
+                                    salesList = selectedSales,
+                                    customerName = customer.name,
+                                    phoneNumber = customer.phone,
+                                    businessName = businessName,
+                                    isShare = false
+                                )
+                            }
+                        },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface, CircleShape)
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Export Consolidated PDF", tint = PrimaryMilk)
+                    }
+
+                    // Direct WhatsApp share combined PDF icon
+                    IconButton(
+                        onClick = {
+                            if (selectedSales.isEmpty()) {
+                                Toast.makeText(context, "Select at least one record.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                exportAndShareSelectedSalesPdf(
+                                    context = context,
+                                    salesList = selectedSales,
+                                    customerName = customer.name,
+                                    phoneNumber = customer.phone,
+                                    businessName = businessName,
+                                    isShare = true,
+                                    whatsAppNumber = customer.phone
+                                )
+                            }
+                        },
+                        modifier = Modifier.background(Color(0xFF25D366), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "WhatsApp PDF Report", tint = Color.White)
+                    }
+
+                    IconButton(
+                        onClick = {
+                            isMultiSelectMode = false
+                            selectedSales.clear()
+                        },
+                        modifier = Modifier.background(Color.LightGray.copy(alpha = 0.4f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = Color.DarkGray)
+                    }
+                }
+            }
+        }
+    }
+} // end of Box
+
+    // Quick Add Sale Dialog inside Customer Profile View
+    if (showQuickAddSaleDialog) {
+        Dialog(onDismissRequest = { showQuickAddSaleDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("quick_add_sale_dialog"),
+                border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.4f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Quick Sale: ${customer.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = PrimaryMilk
+                    )
+
+                    // 1. Category Selection
+                    var selectedCategory by remember { mutableStateOf(prices.firstOrNull()?.milkType ?: "Cow Milk") }
+                    Column {
+                        Text(
+                            text = "Select Milk Grade",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val categoryOptions = if (prices.isNotEmpty()) prices.map { it.milkType } else listOf("Cow Milk", "Buffalo Milk", "A2 Milk")
+                        
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            categoryOptions.forEach { cat ->
+                                val active = selectedCategory == cat
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (active) PrimaryMilk.copy(alpha = 0.15f)
+                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (active) PrimaryMilk else Color.LightGray.copy(alpha = 0.3f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { selectedCategory = cat }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = cat,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (active) PrimaryMilk else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Liters Input
+                    var litersStr by remember { mutableStateOf("1.0") }
+                    Column {
+                        Text(
+                            text = "Quantity (Liters)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = litersStr,
+                            onValueChange = { litersStr = it },
+                            placeholder = { Text("0.0") },
+                            modifier = Modifier.fillMaxWidth().testTag("liters_input"),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PrimaryMilk,
+                                unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Quick buttons to increment/set liters
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val shortcuts = listOf(
+                                "+0.5" to 0.5,
+                                "+1" to 1.0,
+                                "+2" to 2.0,
+                                "+5" to 5.0
+                            )
+                            shortcuts.forEach { (label, incrementValue) ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .clickable {
+                                            val currentObj = litersStr.toDoubleOrNull() ?: 0.0
+                                            litersStr = String.format(java.util.Locale.US, "%.1f", currentObj + incrementValue)
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryMilk
+                                    )
+                                }
+                            }
+
+                            // Clear button
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(AlertRed.copy(alpha = 0.1f))
+                                    .clickable { litersStr = "0.0" }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                             ) {
+                                Text(
+                                    text = "CLR",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AlertRed
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Payment Status Selection
+                    var paymentStatusChoice by remember { mutableStateOf("PENDING") } // PENDING, CASH, UPI
+                    Column {
+                        Text(
+                            text = "Payment Status",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val optionsPayments = listOf(
+                                "PENDING" to "Pending Due",
+                                "CASH" to "Paid (Cash)",
+                                "UPI" to "Paid (UPI)"
+                            )
+                            optionsPayments.forEach { (codeValue, labelText) ->
+                                val selected = paymentStatusChoice == codeValue
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (selected) {
+                                                if (codeValue == "PENDING") AlertRed.copy(alpha = 0.12f)
+                                                else OrganicGreen.copy(alpha = 0.12f)
+                                            } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (selected) {
+                                                if (codeValue == "PENDING") AlertRed
+                                                else OrganicGreen
+                                            } else Color.LightGray.copy(alpha = 0.3f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { paymentStatusChoice = codeValue }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = labelText,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selected) {
+                                            if (codeValue == "PENDING") AlertRed else OrganicGreen
+                                        } else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. Live Calculation feedback card
+                    val rateResolved = prices.find { it.milkType == selectedCategory }?.currentPrice ?: 50.0
+                    val currentLiters = litersStr.toDoubleOrNull() ?: 0.0
+                    val totalCalc = rateResolved * currentLiters
+                    
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.05f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Estimated Amount", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                Text("₹${rateResolved.toInt()}/L x ${String.format(java.util.Locale.US, "%.1f", currentLiters)} L", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                "₹${totalCalc.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = PrimaryMilk
+                            )
+                        }
+                    }
+
+                    // 5. Actions: Cancel / Create
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { showQuickAddSaleDialog = false }) {
+                            Text("Cancel", color = AlertRed, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val litersVal = litersStr.toDoubleOrNull() ?: 0.0
+                                if (litersVal <= 0.0) {
+                                    Toast.makeText(context, "Please write a valid quantity", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onAddSale(
+                                        customer.id,
+                                        customer.name,
+                                        selectedCategory,
+                                        litersVal,
+                                        rateResolved,
+                                        paymentStatusChoice
+                                    )
+                                    showQuickAddSaleDialog = false
+                                    Toast.makeText(context, "Direct sale log created successfully!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Create Sale Log", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    selectedInvoiceForProfileDetail?.let { sale ->
+        InvoiceDetailDialog(
+            sale = sale,
+            businessName = businessName,
+            onDismiss = { selectedInvoiceForProfileDetail = null },
+            onMarkAsPaid = { id, mode ->
+                onSettlePayment(sale, mode)
+                selectedInvoiceForProfileDetail = null
+            },
+            whatsAppNumber = customer.phone
+        )
     }
 }
 

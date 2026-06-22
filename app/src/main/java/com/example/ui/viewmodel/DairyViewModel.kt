@@ -123,9 +123,9 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
     }
 
-    fun addNewCustomer(name: String, phone: String?, qrPreference: String) {
+    fun addNewCustomer(name: String, phone: String?, qrPreference: String, id: String = java.util.UUID.randomUUID().toString()) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.insertCustomer(name, phone, qrPreference)
+            repository.insertCustomer(id, name, phone, qrPreference)
         }
     }
 

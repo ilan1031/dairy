@@ -49,8 +49,9 @@ class Repository(
         return customerDao.getAllCustomers()
     }
 
-    suspend fun insertCustomer(name: String, phone: String?, qrPreference: String) {
+    suspend fun insertCustomer(id: String, name: String, phone: String?, qrPreference: String) {
         val customer = CustomerEntity(
+            id = id,
             name = name,
             phone = phone,
             qrPreference = qrPreference,
