@@ -3980,7 +3980,7 @@ fun exportAndShareSelectedSalesPdf(
 
         val pdfUri = androidx.core.content.FileProvider.getUriForFile(
             context,
-            "${context.packageName}.fileprovider",
+            "${context.packageName}.provider",
             cacheFile
         )
 
