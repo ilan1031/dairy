@@ -3845,15 +3845,21 @@ fun shareSelectedSalesAsText(context: android.content.Context, sales: List<SaleE
     sb.append("----------------------------\n")
     var totalQty = 0.0
     var totalAmt = 0.0
+    val totalPaid = sales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+    val totalPending = sales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+
     sales.sortedByDescending { it.createdAt }.forEach { s ->
         val dateStr = SimpleDateFormat("dd MMM yy", Locale.getDefault()).format(Date(s.createdAt))
-        sb.append("• $dateStr: ${s.liters}L ${s.milkType} = ₹${s.totalAmount.toInt()} (${s.paymentStatus})\n")
+        val statusSymbol = if (s.paymentStatus == "PAID") "✅ Paid" else "⏳ Pending"
+        sb.append("• $dateStr: ${s.liters}L ${s.milkType} = ₹${s.totalAmount.toInt()} ($statusSymbol)\n")
         totalQty += s.liters
         totalAmt += s.totalAmount
     }
     sb.append("----------------------------\n")
     sb.append("*Total Qty:* ${String.format(java.util.Locale.US, "%.1f", totalQty)} L\n")
-    sb.append("*Consolidated Due:* ₹${totalAmt.toInt()}\n")
+    sb.append("*Total Paid:* ₹${totalPaid.toInt()}\n")
+    sb.append("*Total Pending:* ₹${totalPending.toInt()}\n")
+    sb.append("*Grand Total:* ₹${totalAmt.toInt()}\n")
     sb.append("\nThank you for choosing us!")
 
     val sendIntent = android.content.Intent().apply {
@@ -3875,7 +3881,7 @@ fun exportAndShareSelectedSalesPdf(
 ) {
     try {
         val pdfDocument = android.graphics.pdf.PdfDocument()
-        val fileHeight = (300 + (salesList.size * 30)).coerceAtLeast(600).coerceAtMost(1200)
+        val fileHeight = (320 + (salesList.size * 30)).coerceAtLeast(620).coerceAtMost(1200)
         val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(450, fileHeight, 1).create()
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
@@ -3916,9 +3922,9 @@ fun exportAndShareSelectedSalesPdf(
         paint.isFakeBoldText = true
         paint.textSize = 9f
         canvas.drawText("Date", 20f, 200f, paint)
-        canvas.drawText("Items (Milk Category)", 100f, 200f, paint)
-        canvas.drawText("Qty (L)", 260f, 200f, paint)
-        canvas.drawText("Rate", 320f, 200f, paint)
+        canvas.drawText("Items (Milk Category / Status)", 100f, 200f, paint)
+        canvas.drawText("Qty (L)", 280f, 200f, paint)
+        canvas.drawText("Rate", 340f, 200f, paint)
         paint.textAlign = android.graphics.Paint.Align.RIGHT
         canvas.drawText("Total", 430f, 200f, paint)
 
@@ -3931,15 +3937,19 @@ fun exportAndShareSelectedSalesPdf(
 
         var totalQty = 0.0
         var totalCost = 0.0
+        val totalPaid = salesList.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+        val totalPending = salesList.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
 
         val sortedSalesList = salesList.sortedByDescending { it.createdAt }
         sortedSalesList.forEach { sale ->
             val shortDate = SimpleDateFormat("dd MMM yy", Locale.getDefault()).format(Date(sale.createdAt))
             paint.textAlign = android.graphics.Paint.Align.LEFT
             canvas.drawText(shortDate, 20f, currentY, paint)
-            canvas.drawText(sale.milkType, 100f, currentY, paint)
-            canvas.drawText("${sale.liters} L", 260f, currentY, paint)
-            canvas.drawText("₹${sale.ratePerLiter.toInt()}", 320f, currentY, paint)
+            
+            val statusStr = if (sale.paymentStatus == "PAID") "Paid" else "Pending"
+            canvas.drawText("${sale.milkType} ($statusStr)", 100f, currentY, paint)
+            canvas.drawText("${sale.liters} L", 280f, currentY, paint)
+            canvas.drawText("₹${sale.ratePerLiter.toInt()}", 340f, currentY, paint)
 
             paint.textAlign = android.graphics.Paint.Align.RIGHT
             canvas.drawText("₹${sale.totalAmount.toInt()}", 430f, currentY, paint)
@@ -3960,7 +3970,21 @@ fun exportAndShareSelectedSalesPdf(
         canvas.drawText("Grand Summary:", 20f, currentY, paint)
 
         paint.textAlign = android.graphics.Paint.Align.RIGHT
-        canvas.drawText("Total Qty: ${String.format(java.util.Locale.US, "%.1f", totalQty)} L", 240f, currentY, paint)
+        canvas.drawText("Total Qty: ${String.format(java.util.Locale.US, "%.1f", totalQty)} L", 430f, currentY, paint)
+
+        currentY += 18f
+        paint.textAlign = android.graphics.Paint.Align.LEFT
+        paint.color = 0xFF16A34A.toInt() // Green
+        canvas.drawText("Total Paid Amount: ₹${totalPaid.toInt()}", 20f, currentY, paint)
+
+        paint.textAlign = android.graphics.Paint.Align.RIGHT
+        paint.color = 0xFFDC2626.toInt() // Red
+        canvas.drawText("Total Pending: ₹${totalPending.toInt()}", 430f, currentY, paint)
+
+        currentY += 18f
+        paint.textAlign = android.graphics.Paint.Align.RIGHT
+        paint.color = 0xFF1E3A8A.toInt() // Navy
+        paint.isFakeBoldText = true
         canvas.drawText("Total Sum: ₹${totalCost.toInt()}", 430f, currentY, paint)
 
         currentY += 40f
@@ -7389,18 +7413,22 @@ fun CustomerProfileView(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val sumLiters = selectedSales.sumOf { it.liters }
+                    val sumAmount = selectedSales.sumOf { it.totalAmount }
+                    val totalPaidSum = selectedSales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+                    val totalPendingSum = selectedSales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+
                     Text(
-                        text = "${selectedSales.size} bill(s) selected",
-                        style = MaterialTheme.typography.titleSmall,
+                        text = "${selectedSales.size} selected (${String.format(java.util.Locale.US, "%.1f", sumLiters)}L)",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
-                    val sumLiters = selectedSales.sumOf { it.liters }
-                    val sumAmount = selectedSales.sumOf { it.totalAmount }
                     Text(
-                        text = "${String.format(java.util.Locale.US, "%.1f", sumLiters)}L • ₹${sumAmount.toInt()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        text = "Paid: ₹${totalPaidSum.toInt()} • Due: ₹${totalPendingSum.toInt()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
 
