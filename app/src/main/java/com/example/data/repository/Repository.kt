@@ -60,6 +60,20 @@ class Repository(
         customerDao.insertCustomer(customer)
     }
 
+    suspend fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?) {
+        val customer = CustomerEntity(
+            id = id,
+            name = name,
+            phone = phone,
+            qrPreference = qrPreference,
+            address = address,
+            notes = notes,
+            isSynced = false,
+            updatedAt = System.currentTimeMillis()
+        )
+        customerDao.insertCustomer(customer)
+    }
+
     suspend fun deleteCustomer(id: String) {
         customerDao.deleteCustomer(id)
     }

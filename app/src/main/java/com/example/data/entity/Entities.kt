@@ -10,6 +10,8 @@ data class CustomerEntity(
     val name: String,
     val phone: String? = null,
     val qrPreference: String = "UPI",
+    val address: String? = null,
+    val notes: String? = null,
     val isSynced: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )

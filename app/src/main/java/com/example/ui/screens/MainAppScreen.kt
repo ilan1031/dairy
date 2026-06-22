@@ -7,6 +7,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -46,6 +47,7 @@ import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.DairyViewModel
 import java.text.SimpleDateFormat
@@ -70,7 +72,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     var showSuccessSavedToast by remember { mutableStateOf(false) }
 
     // ERP BOTTOM NAVIGATION STATE
-    var activeTab by rememberSaveable { mutableStateOf(0) } // 0: Dashboard, 1: Sales, 2: Bills, 3: Reports, 4: Settings
+    var activeTab by rememberSaveable { mutableStateOf(0) } // 0: Dashboard, 1: Sales, 2: Profiles, 3: Bills, 4: Reports, 5: Settings
+    var selectedCustomerForProfile by remember { mutableStateOf<CustomerEntity?>(null) }
 
     // SELLER REGISTER PROFILES
     val customers by viewModel.customers.collectAsState()
@@ -248,13 +251,13 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     val items = listOf(
                         NavigationBarItemInfo("Dashboard", Icons.Default.Home, 0),
                         NavigationBarItemInfo("Sales", Icons.Default.ShoppingCart, 1),
-                        NavigationBarItemInfo("Bills", Icons.Default.Receipt, 2),
-                        NavigationBarItemInfo("Reports", Icons.Default.BarChart, 3),
-                        NavigationBarItemInfo("Settings", Icons.Default.Settings, 4)
+                        NavigationBarItemInfo("Bills", Icons.Default.Receipt, 3),
+                        NavigationBarItemInfo("Reports", Icons.Default.BarChart, 4),
+                        NavigationBarItemInfo("Settings", Icons.Default.Settings, 5)
                     )
                     items.forEach { item ->
                         NavigationBarItem(
-                            selected = activeTab == item.tabIndex || (item.tabIndex == 4 && activeTab == 5),
+                            selected = activeTab == item.tabIndex || (item.tabIndex == 5 && activeTab == 6),
                             onClick = { activeTab = item.tabIndex },
                             icon = { Icon(item.icon, contentDescription = item.label) },
                             label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -280,6 +283,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     0 -> DashboardTab(
                         ownerName = ownerName,
                         sales = sales,
+                        customers = customers,
                         totalPending = totalPending,
                         totalCollected = totalCollected,
                         totalLiters = totalLiters,
@@ -287,9 +291,16 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             when (actionType) {
                                 "NEW_SALE" -> activeTab = 1
                                 "ADD_CUSTOMER" -> showQuickCustomerDialog = true
-                                "COLLECT_PAYMENT" -> activeTab = 2
-                                "GENERATE_REPORT" -> activeTab = 3
+                                "COLLECT_PAYMENT" -> activeTab = 3
+                                "GENERATE_REPORT" -> activeTab = 4
                             }
+                        },
+                        onNavigateToCustomerProfile = { customer ->
+                            selectedCustomerForProfile = customer
+                            activeTab = 2
+                        },
+                        onNavigateToProfiles = {
+                            activeTab = 2
                         },
                         onSettlePayment = { sale ->
                             viewModel.markAsPaid(sale.id, "CASH")
@@ -320,13 +331,27 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             viewModel.addNewCustomer(name, phone, pref)
                         }
                     )
-                    2 -> BillsTab(
+                    2 -> CustomersTab(
+                        customers = customers,
+                        sales = sales,
+                        selectedCustomer = selectedCustomerForProfile,
+                        onSelectCustomer = { selectedCustomerForProfile = it },
+                        onUpdateCustomerDetails = { id, name, phone, qr, addr, notes ->
+                            viewModel.saveCustomerDetails(id, name, phone, qr, addr, notes)
+                        },
+                        onSettlePayment = { sale, pType ->
+                            viewModel.markAsPaid(sale.id, pType)
+                        },
+                        onTriggerQuickAdd = { showQuickCustomerDialog = true },
+                        onBackToDashboard = { activeTab = 0 }
+                    )
+                    3 -> BillsTab(
                         sales = sales,
                         dateFilter = billsDateFilter,
                         onDateFilterChange = { billsDateFilter = it },
                         onInvoiceClick = { selectedInvoiceForDetail = it }
                     )
-                    3 -> ReportsTab(
+                    4 -> ReportsTab(
                         sales = sales,
                         totalPending = totalPending,
                         totalCollected = totalCollected,
@@ -334,7 +359,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         totalRevenue = totalRevenueCalculated,
                         isCommunityActive = isCommunityOwnerFeatureActive
                     )
-                    4 -> SettingsTab(
+                    5 -> SettingsTab(
                         businessName = businessName,
                         ownerName = ownerName,
                         mobileNumber = mobileNumber,
@@ -349,10 +374,6 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         onSaveProfile = { bn, on, mn, em, pw ->
                             viewModel.updateProfile(bn, on, mn, em, pw)
                             Toast.makeText(context, "Business Profile Updated!", Toast.LENGTH_SHORT).show()
-                        },
-                        onAddPrice = { brand, current ->
-                            viewModel.updatePrice(brand, current)
-                            Toast.makeText(context, "Price updated: ₹$current/L", Toast.LENGTH_SHORT).show()
                         },
                         onAddCustomer = { name, phone, qr ->
                             viewModel.addNewCustomer(name, phone, qr)
@@ -370,9 +391,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             currentScreenState = "SPLASH"
                             Toast.makeText(context, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                         },
-                        onNavigateToInventory = { activeTab = 5 }
+                        onNavigateToInventory = { activeTab = 6 }
                     )
-                    5 -> InventoryTab(
+                    6 -> InventoryTab(
                         prices = prices,
                         priceLogs = priceLogs,
                         inventories = inventories,
@@ -386,7 +407,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         onUpdatePrice = { brand, price ->
                             viewModel.updatePrice(brand, price)
                         },
-                        onBack = { activeTab = 4 }
+                        onBack = { activeTab = 5 }
                     )
                 }
 
@@ -523,7 +544,7 @@ fun SplashScreen(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
         ) {
             Box(
                 modifier = Modifier
@@ -620,6 +641,7 @@ fun LoginScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -858,10 +880,13 @@ fun RegisterScreen(
 fun DashboardTab(
     ownerName: String,
     sales: List<SaleEntity>,
+    customers: List<CustomerEntity> = emptyList(),
     totalPending: Double,
     totalCollected: Double,
     totalLiters: Double,
     onQuickAction: (String) -> Unit,
+    onNavigateToCustomerProfile: (CustomerEntity) -> Unit = {},
+    onNavigateToProfiles: () -> Unit = {},
     onSettlePayment: (SaleEntity) -> Unit
 ) {
     val context = LocalContext.current
@@ -889,25 +914,88 @@ fun DashboardTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Welcoming header panel
+        // Welcoming header hero banner
         item {
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = PrimaryMilk),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column {
-                    Text("$greetingStr, $ownerName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text(currentDateStr, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                }
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(PrimaryMilk.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Person, contentDescription = "User profile thumb", tint = PrimaryMilk)
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    // Decorative shapes
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(140.dp)
+                            .offset(x = 35.dp, y = (-35).dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.12f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .size(80.dp)
+                            .offset(x = (-15).dp, y = 25.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f))
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = greetingStr,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = ownerName,
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Black
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = currentDateStr,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.2f))
+                                .border(1.5.dp, Color.White, CircleShape)
+                                .clickable { onNavigateToProfiles() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "User Profile",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -920,23 +1008,24 @@ fun DashboardTab(
                         .fillMaxWidth()
                         .testTag("aged_warning_banner"),
                     colors = CardDefaults.cardColors(containerColor = AlertRed),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.Warning, contentDescription = "Aged debt flag", tint = Color.White)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Critical Customer Debt",
+                                "Critical Customer Debt Alert",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                "${oldPendingInvoices.size} milk runs outstanding for >7 days. Settle up now.",
+                                "${oldPendingInvoices.size} milk runs outstanding for over 7 days. Please check customer profiles to settle.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.9f)
                             )
@@ -948,21 +1037,37 @@ fun DashboardTab(
 
         // 4 KPI CARDS (Dashboard Grid layout)
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // KPI Card 1: Today's Sales Revenue
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Icon(Icons.Default.Payments, "Today's Sales", tint = PrimaryMilk, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("Today's Sales", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(PrimaryMilk.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Payments, "Today's Sales", tint = PrimaryMilk, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text("Today's Revenue", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${sales.sumOf { it.totalAmount }.toInt()}",
                                 style = MaterialTheme.typography.titleLarge,
@@ -975,12 +1080,28 @@ fun DashboardTab(
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Icon(Icons.Default.WaterDrop, "Milk Sold", tint = PrimaryMilk, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("Total Distributed", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(PrimaryMilk.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.WaterDrop, "Milk Sold", tint = PrimaryMilk, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text("Total Outflow", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "${String.format("%.1f", totalLiters)} L",
                                 style = MaterialTheme.typography.titleLarge,
@@ -992,18 +1113,34 @@ fun DashboardTab(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // KPI Card 3: Pending Amount
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Icon(Icons.Default.HourglassEmpty, "Pending Amount", tint = AlertRed, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("Pending Amount", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(AlertRed.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.HourglassEmpty, "Pending Amount", tint = AlertRed, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text("Total Unpaid", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${totalPending.toInt()}",
                                 style = MaterialTheme.typography.titleLarge,
@@ -1017,12 +1154,28 @@ fun DashboardTab(
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, OrganicGreen.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Icon(Icons.Default.CheckCircle, "Collections", tint = OrganicGreen, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("Collections", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(OrganicGreen.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, "Collections", tint = OrganicGreen, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text("Total Collected", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${totalCollected.toInt()}",
                                 style = MaterialTheme.typography.titleLarge,
@@ -1039,38 +1192,84 @@ fun DashboardTab(
         item {
             Text("Quick ERP Actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                QuickActionButton(
-                    label = "New Sale",
-                    icon = Icons.Default.LocalShipping,
-                    color = PrimaryMilk,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onQuickAction("NEW_SALE") }
-                )
-                QuickActionButton(
-                    label = "Add Customer",
-                    icon = Icons.Default.PersonAdd,
-                    color = PrimaryGold,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onQuickAction("ADD_CUSTOMER") }
-                )
-                QuickActionButton(
-                    label = "Collect Cash",
-                    icon = Icons.Default.CurrencyExchange,
-                    color = OrganicGreen,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onQuickAction("COLLECT_PAYMENT") }
-                )
-                QuickActionButton(
-                    label = "Reports",
-                    icon = Icons.Default.Analytics,
-                    color = Color.DarkGray,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onQuickAction("GENERATE_REPORT") }
-                )
+            BoxWithConstraints {
+                val isSmallScreen = maxWidth < 440.dp
+                if (isSmallScreen) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QuickActionButton(
+                                label = "New Sale",
+                                icon = Icons.Default.LocalShipping,
+                                color = PrimaryMilk,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onQuickAction("NEW_SALE") }
+                            )
+                            QuickActionButton(
+                                label = "Add Customer",
+                                icon = Icons.Default.PersonAdd,
+                                color = PrimaryGold,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onQuickAction("ADD_CUSTOMER") }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QuickActionButton(
+                                label = "Collect Cash",
+                                icon = Icons.Default.CurrencyExchange,
+                                color = OrganicGreen,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onQuickAction("COLLECT_PAYMENT") }
+                            )
+                            QuickActionButton(
+                                label = "Reports",
+                                icon = Icons.Default.Analytics,
+                                color = Color.DarkGray,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onQuickAction("GENERATE_REPORT") }
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        QuickActionButton(
+                            label = "New Sale",
+                            icon = Icons.Default.LocalShipping,
+                            color = PrimaryMilk,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickAction("NEW_SALE") }
+                        )
+                        QuickActionButton(
+                            label = "Add Customer",
+                            icon = Icons.Default.PersonAdd,
+                            color = PrimaryGold,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickAction("ADD_CUSTOMER") }
+                        )
+                        QuickActionButton(
+                            label = "Collect Cash",
+                            icon = Icons.Default.CurrencyExchange,
+                            color = OrganicGreen,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickAction("COLLECT_PAYMENT") }
+                        )
+                        QuickActionButton(
+                            label = "Reports",
+                            icon = Icons.Default.Analytics,
+                            color = Color.DarkGray,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickAction("GENERATE_REPORT") }
+                        )
+                    }
+                }
             }
         }
 
@@ -1121,53 +1320,79 @@ fun DashboardTab(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 2.dp),
+                        .padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            when (sale.milkType) {
-                                                "Cow Milk" -> Color(0xFF64B5F6)
-                                                "Buffalo Milk" -> Color(0xFF81C784)
-                                                else -> Color(0xFFFFB74D)
-                                            }
-                                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when (sale.milkType) {
+                                            "Cow Milk" -> Color(0xFF1E88E5).copy(alpha = 0.1f)
+                                            "Buffalo Milk" -> Color(0xFF2E7D32).copy(alpha = 0.1f)
+                                            else -> Color(0xFFFFA000).copy(alpha = 0.1f)
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.WaterDrop,
+                                    contentDescription = null,
+                                    tint = when (sale.milkType) {
+                                        "Cow Milk" -> Color(0xFF1E88E5)
+                                        "Buffalo Milk" -> Color(0xFF2E7D32)
+                                        else -> Color(0xFFFFA000)
+                                    },
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
                                 Text(
                                     text = sale.customerName,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable {
+                                        val match = customers.find { it.id == sale.customerId || it.name.equals(sale.customerName, ignoreCase = true) }
+                                        if (match != null) {
+                                            onNavigateToCustomerProfile(match)
+                                        } else {
+                                            val temp = CustomerEntity(id = sale.customerId, name = sale.customerName)
+                                            onNavigateToCustomerProfile(temp)
+                                        }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "${sale.liters} L • ${sale.milkType} • ₹${sale.ratePerLiter}/L",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "${sale.liters} L (${sale.milkType}) • ₹${sale.ratePerLiter}/L",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 "₹${sale.totalAmount.toInt()}",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -1180,10 +1405,10 @@ fun DashboardTab(
                                             onSettlePayment(sale)
                                         }
                                     }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = if (sale.paymentStatus == "PAID") "Paid" else "Pending (Settle)",
+                                    text = if (sale.paymentStatus == "PAID") "Paid" else "Collect Now",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (sale.paymentStatus == "PAID") OrganicGreen else AlertRed,
                                     fontWeight = FontWeight.Bold
@@ -1207,26 +1432,35 @@ fun QuickActionButton(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.height(84.dp),
+        modifier = modifier.height(96.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.25f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(8.dp),
+            modifier = Modifier.fillMaxSize().padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
 
 // ==========================================
 // TAB 1: SALES & ENTRY ENGINE
-// ==========================================
-@OptIn(ExperimentalLayoutApi::class)
+// ==========================@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SalesTab(
     customers: List<CustomerEntity>,
@@ -1243,11 +1477,11 @@ fun SalesTab(
 
     // Computations outside LazyColumn for today's customer numbering
     val todayStart = remember(sales) {
-        val cal = java.util.Calendar.getInstance()
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
         cal.timeInMillis
     }
     val todaySalesCount = remember(sales, todayStart) {
@@ -1255,16 +1489,20 @@ fun SalesTab(
     }
     val nextAutoCustomerName = "Customer ${todaySalesCount + 1}"
 
-    val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()) }
-    val todayDateStr = remember { sdf.format(java.util.Date()) }
+    val sdf = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    val todayDateStr = remember { sdf.format(Date()) }
 
     val todayInventory = remember(inventories, todayDateStr) {
         inventories.find { it.dateStr == todayDateStr }
     }
 
-    val todayStockMap = remember(todayInventory) {
+    val todayStockMap = remember(todayInventory, prices) {
         val map = mutableMapOf<String, Double>()
+        // Initialize all active custom categories from prices database to 100.0 as default safety fallback if no inventory logged
+        prices.forEach { map[it.milkType] = 100.0 }
+        
         if (todayInventory != null) {
+            prices.forEach { map[it.milkType] = 0.0 } // Clear fallback only if they have recorded starting inventory
             map["Cow Milk"] = todayInventory.cowLiters
             map["Buffalo Milk"] = todayInventory.buffaloLiters
             map["A2 Milk"] = todayInventory.a2Liters
@@ -1279,10 +1517,6 @@ fun SalesTab(
                     }
                 }
             }
-        } else {
-            map["Cow Milk"] = 0.0
-            map["Buffalo Milk"] = 0.0
-            map["A2 Milk"] = 0.0
         }
         map
     }
@@ -1321,390 +1555,1042 @@ fun SalesTab(
 
     val finalCostCalculated = selectedLiters * rateResolved
 
+    // Check outstanding dues of selected customer
+    val customerOutstandingDues = remember(selectedCustomer, sales) {
+        selectedCustomer?.let { cust ->
+            sales.filter { it.customerId == cust.id && it.paymentStatus == "PENDING" }
+                .sumOf { it.totalAmount }
+        } ?: 0.0
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)
     ) {
-        // Step 1: Customer selector
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "1. Choose / Search Customer",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                TextButton(
-                    onClick = {
-                        val existing = customers.find { it.name.equals(nextAutoCustomerName, ignoreCase = true) }
-                        if (existing != null) {
-                            selectedCustomer = existing
-                            inputQuery = existing.name
-                        } else {
-                            onQuickAddCustomer(nextAutoCustomerName, "", "UPI")
-                            selectedCustomer = CustomerEntity(id = nextAutoCustomerName, name = nextAutoCustomerName, phone = "", qrPreference = "UPI")
-                            inputQuery = nextAutoCustomerName
-                        }
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = PrimaryGold
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Auto-Customer ($nextAutoCustomerName)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryGold
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-
-            OutlinedTextField(
-                value = inputQuery,
-                onValueChange = {
-                    inputQuery = it
-                    isDropdownExpanded = true
-                },
-                placeholder = { Text("Search (Arun, Hotel ABC...)") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    IconButton(onClick = { isDropdownExpanded = !isDropdownExpanded }) {
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // Inline Dynamic Dropdown
-            val filteredCustomers = remember(inputQuery, customers) {
-                if (inputQuery.isBlank()) customers
-                else customers.filter { it.name.contains(inputQuery, ignoreCase = true) }
-            }
-
-            if (isDropdownExpanded && filteredCustomers.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                        .padding(top = 4.dp),
-                    elevation = CardDefaults.cardElevation(4.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, Color.LightGray)
-                ) {
-                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        filteredCustomers.forEach { customer ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedCustomer = customer
-                                        inputQuery = customer.name
-                                        isDropdownExpanded = false
-                                        showDirectRegisterPanel = false
-                                    }
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(customer.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "Pref: ${customer.qrPreference}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = PrimaryMilk
-                                )
-                            }
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                        }
-                    }
-                }
-            }
-        }
-
-        // Action or register panel if customer not found
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = {
-                        showDirectRegisterPanel = !showDirectRegisterPanel
-                    }
-                ) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Or Register New Customer Profile", color = PrimaryMilk)
-                }
-
-                selectedCustomer?.let {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.1f))
-                    ) {
-                        Text(
-                            text = "Selected: ${it.name}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryMilk,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            if (showDirectRegisterPanel) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = SlateCardBg),
-                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.6f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text("Register Profile Direct", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedTextField(
-                            value = directRegName,
-                            onValueChange = { directRegName = it },
-                            label = { Text("Customer/Business Name") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = directRegPhone,
-                            onValueChange = { directRegPhone = it },
-                            label = { Text("Phone (Optional)") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                if (directRegName.isNotBlank()) {
-                                    onQuickAddCustomer(directRegName, directRegPhone, "UPI")
-                                    inputQuery = directRegName
-                                    showDirectRegisterPanel = false
-                                    // select newly set customer
-                                    Toast.makeText(context, "$directRegName Added!", Toast.LENGTH_SHORT).show()
-                                    directRegName = ""
-                                    directRegPhone = ""
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
-                            modifier = Modifier.align(Alignment.End)
-                        ) {
-                            Text("Create & Select")
-                        }
-                    }
-                }
-            }
-        }
-
-        // Step 2: Category
-        item {
-            Text(
-                "2. Milk Category Selection",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                milkTypes.forEach { type ->
-                    val isChosen = selectedMilkType == type
-                    FilterChip(
-                        selected = isChosen,
-                        onClick = { selectedMilkType = type },
-                        label = { Text(type) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryMilk.copy(alpha = 0.15f),
-                            selectedLabelColor = PrimaryMilk,
-                            selectedLeadingIconColor = PrimaryMilk
-                        )
-                    )
-                }
-            }
-
-            val selectedStockLevel = todayStockMap[selectedMilkType] ?: 0.0
-            val selectedSoldToday = todaySalesMap[selectedMilkType] ?: 0.0
-            val selectedRemaining = (selectedStockLevel - selectedSoldToday).coerceAtLeast(0.0)
-            val isStockAlarm = selectedRemaining <= 0.0
-            val isStockWarning = selectedLiters > selectedRemaining && selectedMilkType != "Custom"
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (selectedMilkType == "Custom") Color.Gray.copy(alpha = 0.12f)
-                            else if (isStockAlarm) AlertRed.copy(alpha = 0.12f)
-                            else if (isStockWarning) PrimaryGold.copy(alpha = 0.12f)
-                            else OrganicGreen.copy(alpha = 0.12f)
-                        )
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = if (selectedMilkType == "Custom") "Custom category has no pre-set inventory stock"
-                               else "Stock Info: ${String.format(java.util.Locale.US, "%.2f", selectedRemaining)} L available today (Capacity: ${String.format(java.util.Locale.US, "%.2f", selectedStockLevel)} L, Sold: ${String.format(java.util.Locale.US, "%.2f", selectedSoldToday)} L)",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (selectedMilkType == "Custom") Color.Gray
-                                else if (isStockAlarm) AlertRed
-                                else if (isStockWarning) PrimaryGold
-                                else OrganicGreen
-                    )
-                }
-            }
-
-            if (selectedMilkType == "Custom") {
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = customPriceInput,
-                    onValueChange = { customPriceInput = it },
-                    label = { Text("Custom Price per Liter (₹)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            } else {
-                Text(
-                    text = "Configured Rate: ₹$rateResolved/L",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
-                )
-            }
-        }
-
-        // Step 3: Liters Selector Row
-        item {
-            Text(
-                "3. Quantity Liter Volume",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val presets = listOf(0.25, 1.0, 2.0, 3.5, 5.0)
-                presets.forEach { pre ->
-                    val matches = selectedLiters == pre
-                    Button(
-                        onClick = {
-                            selectedLiters = pre
-                            rawLitersInput = pre.toString()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (matches) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (matches) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(2.dp)
-                    ) {
-                        Text("${pre}L", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Direct input field with slider adjustment
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = rawLitersInput,
-                    onValueChange = {
-                        rawLitersInput = it
-                        selectedLiters = it.toDoubleOrNull() ?: 0.1
-                    },
-                    label = { Text("Exact Liters Ordered") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.weight(1f)
-                )
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // Incrementer Decerementer
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .border(1.dp, Color.Gray, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 4.dp)
-                ) {
-                    IconButton(onClick = {
-                        if (selectedLiters > 0.25) {
-                            selectedLiters = (selectedLiters - 0.25).coerceAtLeast(0.25)
-                            rawLitersInput = selectedLiters.toString()
-                        }
-                    }) {
-                        Icon(Icons.Default.Remove, contentDescription = null, tint = PrimaryMilk)
-                    }
-                    Text(
-                        "${String.format(java.util.Locale.US, "%.2f", selectedLiters)}L",
-                        fontWeight = FontWeight.Black,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    IconButton(onClick = {
-                        selectedLiters = (selectedLiters + 0.25).coerceAtMost(100.0)
-                        rawLitersInput = selectedLiters.toString()
-                    }) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = PrimaryMilk)
-                    }
-                }
-            }
-        }
-
-        // Calculation block Banner
+        // Premium Title & Header Banner
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.06f)),
-                border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.2f)),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.05f)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.1f))
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PrimaryMilk.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ShoppingCart,
+                            contentDescription = null,
+                            tint = PrimaryMilk,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
-                        Text("Calculate Price", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         Text(
-                            text = "0.25 L x ₹50 = ₹12.50",
+                            text = "New Billing Entry",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = PrimaryMilk
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Record dynamic sales, configure volumes, map dues",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.Gray
                         )
+                    }
+                }
+            }
+        }
+
+        // STEP 1: CUSTOMER SELECTION
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Section Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryMilk),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = "${String.format(java.util.Locale.US, "%.2f", selectedLiters)} L × ₹${String.format(java.util.Locale.US, "%.2f", rateResolved)}/L",
-                            style = MaterialTheme.typography.bodyMedium,
+                            "1",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Client Account Linking",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                if (selectedCustomer != null) {
+                    // SELECTED CUSTOMER LEDGER CARD
+                    val cust = selectedCustomer!!
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, PrimaryMilk.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(CircleShape)
+                                    .background(PrimaryMilk.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = cust.name.take(2).uppercase(),
+                                    fontWeight = FontWeight.Black,
+                                    color = PrimaryMilk,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = cust.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = Color.Gray
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = cust.phone ?: "No phone registered",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                                
+                                if (customerOutstandingDues > 0) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.HourglassEmpty,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = AlertRed
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Outstanding Debt: ₹${customerOutstandingDues.toInt()}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = AlertRed,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            // Change Customer Button
+                            OutlinedButton(
+                                onClick = {
+                                    selectedCustomer = null
+                                    inputQuery = ""
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
+                                border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.3f))
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Clear", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                } else {
+                    // NO CUSTOMER CHOSEN: SEARCH FIELD + QUICK PICK CHIPS
+                    OutlinedTextField(
+                        value = inputQuery,
+                        onValueChange = {
+                            inputQuery = it
+                            isDropdownExpanded = true
+                        },
+                        placeholder = { Text("Search client name or scan logbook...", color = Color.Gray) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = PrimaryMilk) },
+                        trailingIcon = {
+                            IconButton(onClick = { isDropdownExpanded = !isDropdownExpanded }) {
+                                Icon(
+                                    if (isDropdownExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = PrimaryMilk
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("search_customer_field"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryMilk,
+                            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.7f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        )
+                    )
+
+                    // Dropdown suggestion card
+                    val filteredCustomers = remember(inputQuery, customers) {
+                        if (inputQuery.isBlank()) customers
+                        else customers.filter { it.name.contains(inputQuery, ignoreCase = true) }
+                    }
+
+                    if (isDropdownExpanded && filteredCustomers.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 240.dp)
+                                .padding(top = 2.dp),
+                            elevation = CardDefaults.cardElevation(6.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                filteredCustomers.forEach { customer ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selectedCustomer = customer
+                                                inputQuery = customer.name
+                                                isDropdownExpanded = false
+                                                showDirectRegisterPanel = false
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(PrimaryMilk.copy(alpha = 0.1f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    customer.name.take(1).uppercase(),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = PrimaryMilk
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(customer.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            if (!customer.phone.isNullOrBlank()) {
+                                                Text(
+                                                    customer.phone,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(PrimaryGold.copy(alpha = 0.1f))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    customer.qrPreference,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PrimaryGold,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Selection Assistance Row
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Quick Pick or Register:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Regular auto-buyer preset
+                        AssistChip(
+                            onClick = {
+                                val existing = customers.find { it.name.equals(nextAutoCustomerName, ignoreCase = true) }
+                                if (existing != null) {
+                                    selectedCustomer = existing
+                                    inputQuery = existing.name
+                                } else {
+                                    onQuickAddCustomer(nextAutoCustomerName, "", "UPI")
+                                    selectedCustomer = CustomerEntity(id = nextAutoCustomerName, name = nextAutoCustomerName, phone = "", qrPreference = "UPI")
+                                    inputQuery = nextAutoCustomerName
+                                }
+                                isDropdownExpanded = false
+                            },
+                            label = { Text("Auto-Customer (${nextAutoCustomerName.take(10)}...)") },
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(14.dp)) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                labelColor = PrimaryGold,
+                                containerColor = PrimaryGold.copy(alpha = 0.05f)
+                            ),
+                            border = BorderStroke(1.dp, PrimaryGold.copy(alpha = 0.3f))
+                        )
+
+                        // Register New profile toggle
+                        AssistChip(
+                            onClick = { showDirectRegisterPanel = !showDirectRegisterPanel },
+                            label = { Text("New Client Roll") },
+                            leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(14.dp)) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                labelColor = PrimaryMilk,
+                                containerColor = PrimaryMilk.copy(alpha = 0.05f)
+                            ),
+                            border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.3f))
+                        )
+
+                        // Display top 3 real customers for fast checkout
+                        val frequentClients = customers.filter { !it.name.contains("Customer", ignoreCase = true) }.take(3)
+                        frequentClients.forEach { freq ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    selectedCustomer = freq
+                                    inputQuery = freq.name
+                                },
+                                label = { Text(freq.name) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            )
+                        }
+                    }
+
+                    // Direct profile register expansion animation
+                    AnimatedVisibility(
+                        visible = showDirectRegisterPanel,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.LibraryAdd, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Immediate Client Sign-Up", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                
+                                OutlinedTextField(
+                                    value = directRegName,
+                                    onValueChange = { directRegName = it },
+                                    label = { Text("Business or Customer Name") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                OutlinedTextField(
+                                    value = directRegPhone,
+                                    onValueChange = { directRegPhone = it },
+                                    label = { Text("Logistics Phone (Optional)") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(onClick = { showDirectRegisterPanel = false }) {
+                                        Text("Cancel", color = Color.Gray)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            if (directRegName.isNotBlank()) {
+                                                onQuickAddCustomer(directRegName, directRegPhone, "UPI")
+                                                val createdCust = CustomerEntity(
+                                                    id = directRegName, // DAO fallback fallback
+                                                    name = directRegName,
+                                                    phone = directRegPhone.ifBlank { null },
+                                                    qrPreference = "UPI"
+                                                )
+                                                // Fetch and select from customers is done in background, but select manually first
+                                                selectedCustomer = createdCust
+                                                inputQuery = directRegName
+                                                showDirectRegisterPanel = false
+                                                Toast.makeText(context, "$directRegName registered & selected!", Toast.LENGTH_SHORT).show()
+                                                directRegName = ""
+                                                directRegPhone = ""
+                                            } else {
+                                                Toast.makeText(context, "Please enter customer name!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("Register & Use")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // STEP 2: CATEGORY CHOICE
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Section Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryMilk),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "2",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Product Category Select",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                // Grid representation of items
+                val resolvedTypes = remember(prices) {
+                    (prices.map { it.milkType } + "Custom").distinct()
+                }
+                val chunkedTypes = remember(resolvedTypes) {
+                    resolvedTypes.chunked(2)
+                }
+                
+                chunkedTypes.forEach { rowTypes ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowTypes.forEach { type ->
+                            val isChosen = selectedMilkType == type
+                            val priceAmt = if (type == "Custom") 0.0 else (prices.find { it.milkType == type }?.currentPrice ?: 50.0)
+                            
+                            val selectedStockLevel = todayStockMap[type] ?: 0.0
+                            val selectedSoldToday = todaySalesMap[type] ?: 0.0
+                            val selectedRemaining = (selectedStockLevel - selectedSoldToday).coerceAtLeast(0.0)
+                            
+                            Card(
+                                onClick = { selectedMilkType = type },
+                                modifier = Modifier.weight(1f).height(112.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    width = if (isChosen) 2.dp else 1.dp,
+                                    color = if (isChosen) PrimaryMilk else Color.LightGray.copy(alpha = 0.5f)
+                                ),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isChosen) PrimaryMilk.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(12.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (type == "Custom") Icons.Default.EditNote else Icons.Default.WaterDrop,
+                                            contentDescription = null,
+                                            tint = if (isChosen) PrimaryMilk else Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        if (isChosen) {
+                                            Icon(
+                                                imageVector = Icons.Default.Done,
+                                                contentDescription = null,
+                                                tint = PrimaryMilk,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Column {
+                                        Text(
+                                            text = type,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isChosen) PrimaryMilk else Color.DarkGray
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (type == "Custom") "Variable" else "₹${priceAmt.toInt()}/L",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isChosen) PrimaryMilk else Color.Gray,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            if (type != "Custom") {
+                                                Text(
+                                                    text = "${selectedRemaining.toInt()}L Left",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (selectedRemaining <= 5.0) AlertRed else OrganicGreen,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = "Dynamic",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PrimaryGold,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (rowTypes.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+
+                // Inline Dynamic Warnings/Custom Field Inputs
+                AnimatedVisibility(
+                    visible = selectedMilkType == "Custom",
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    OutlinedTextField(
+                        value = customPriceInput,
+                        onValueChange = { customPriceInput = it },
+                        label = { Text("Apply Custom Rate (₹ per Liter)") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.Payments, contentDescription = null, tint = PrimaryGold) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryGold,
+                            focusedLabelColor = PrimaryGold
+                        )
+                    )
+                }
+
+                // If not custom, show beautiful mini-status of selected stock
+                if (selectedMilkType != "Custom") {
+                    val currentRemaining = (todayStockMap[selectedMilkType] ?: 0.0) - (todaySalesMap[selectedMilkType] ?: 0.0)
+                    val outOfStock = currentRemaining <= 0.0
+                    val warningState = selectedLiters > currentRemaining
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (outOfStock) AlertRed.copy(alpha = 0.08f)
+                                else if (warningState) PrimaryGold.copy(alpha = 0.08f)
+                                else OrganicGreen.copy(alpha = 0.08f)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (outOfStock) Icons.Default.HourglassEmpty else Icons.Default.Done,
+                            contentDescription = null,
+                            tint = if (outOfStock) AlertRed else if (warningState) PrimaryGold else OrganicGreen,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (outOfStock) "Out of stock! Ensure you allocate inventory in settings."
+                                   else if (warningState) "Warning: Order exceeds today's remaining stock of ${currentRemaining.toInt()}L!"
+                                   else "Stock balance is secure. ${String.format(Locale.US, "%.1f", currentRemaining)} Liters available to fulfill.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (outOfStock) AlertRed else if (warningState) PrimaryGold else OrganicGreen,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // STEP 3: QUANTITY LITER SELECTOR
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Section Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryMilk),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "3",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Configure Milk Volume",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                // Presets styled beautifully as capsule chips
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val presets = listOf(0.25, 0.5, 1.0, 2.0, 5.0, 10.0)
+                    presets.forEach { pre ->
+                        val matches = selectedLiters == pre
+                        ElevatedFilterChip(
+                            selected = matches,
+                            onClick = {
+                                selectedLiters = pre
+                                rawLitersInput = pre.toString()
+                            },
+                            label = { Text("${pre} L", fontWeight = FontWeight.Black) },
+                            colors = FilterChipDefaults.elevatedFilterChipColors(
+                                selectedContainerColor = PrimaryMilk,
+                                selectedLabelColor = Color.White,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                labelColor = Color.DarkGray
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Unified physical interaction row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Dec-Button
+                    FilledIconButton(
+                        onClick = {
+                            if (selectedLiters > 0.25) {
+                                selectedLiters = (selectedLiters - 0.25).coerceAtLeast(0.25)
+                                rawLitersInput = selectedLiters.toString()
+                            }
+                        },
+                        modifier = Modifier.size(54.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = PrimaryMilk
+                        )
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(24.dp))
+                    }
+
+                    // Centered Text input representing volume count
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = rawLitersInput,
+                            onValueChange = {
+                                rawLitersInput = it
+                                selectedLiters = it.toDoubleOrNull() ?: 0.1
+                            },
+                            textStyle = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                textAlign = TextAlign.Center,
+                                color = PrimaryMilk
+                            ),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.width(120.dp)
+                        )
+                    }
+
+                    // Inc-Button
+                    FilledIconButton(
+                        onClick = {
+                            selectedLiters = (selectedLiters + 0.25).coerceAtMost(200.0)
+                            rawLitersInput = selectedLiters.toString()
+                        },
+                        modifier = Modifier.size(54.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = PrimaryMilk,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
+
+        // STEP 4: PAYMENT SECTOR
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Section Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryMilk),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "4",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Payment Resolution Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                // Grid of 4 choices styled like premium cards with brand accents
+                val paymentMethods = listOf(
+                    Triple("CASH", Icons.Default.Payments, OrganicGreen),
+                    Triple("UPI", Icons.Default.QrCodeScanner, PrimaryGold),
+                    Triple("BANK", Icons.Default.AccountBalance, PrimaryMilk),
+                    Triple("PENDING", Icons.Default.HourglassEmpty, AlertRed)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    paymentMethods.take(2).forEach { (method, icon, color) ->
+                        val isSelected = paymentTypeChoice == method
+                        Card(
+                            onClick = { paymentTypeChoice = method },
+                            modifier = Modifier.weight(1f).height(64.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) color else Color.LightGray.copy(alpha = 0.5f)
+                            ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) color else color.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color.White else color,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(
+                                    text = method,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isSelected) color else Color.DarkGray
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    paymentMethods.drop(2).forEach { (method, icon, color) ->
+                        val isSelected = paymentTypeChoice == method
+                        Card(
+                            onClick = { paymentTypeChoice = method },
+                            modifier = Modifier.weight(1f).height(64.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) color else Color.LightGray.copy(alpha = 0.5f)
+                            ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) color else color.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color.White else color,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(
+                                    text = method,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isSelected) color else Color.DarkGray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // STEP 5: PHYSICAL-STYLE IN-HAND RECEIPT INVOICE
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.15f)),
+                elevation = CardDefaults.cardElevation(3.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    // Receipt Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Live Invoice Voucher",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Black,
+                                color = PrimaryMilk
+                            )
+                        }
+                        Text(
+                            text = todayDateStr,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Total Bill Due", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f), thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Line Items
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "${selectedCustomer?.name ?: "Guest/Unassigned"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "$selectedMilkType delivery",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
+                            )
+                        }
                         Text(
-                            text = "₹${String.format(java.util.Locale.US, "%.2f", finalCostCalculated)}",
+                            text = "${String.format(Locale.US, "%.2f", selectedLiters)} L × ₹${String.format(Locale.US, "%.2f", rateResolved)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (customerOutstandingDues > 0) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Previous Outstanding Debt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AlertRed,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "+ ₹${customerOutstandingDues.toInt()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AlertRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    // Receipt physical dashed divider effect
+                    Text(
+                        text = "• • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • • •",
+                        color = Color.LightGray,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1
+                    )
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Grand total billing
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column {
+                            Text(
+                                "RECEIVABLE TOTAL",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                color = Color.Gray
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        when (paymentTypeChoice) {
+                                            "PENDING" -> AlertRed.copy(alpha = 0.12f)
+                                            "CASH" -> OrganicGreen.copy(alpha = 0.12f)
+                                            "UPI" -> PrimaryGold.copy(alpha = 0.12f)
+                                            else -> PrimaryMilk.copy(alpha = 0.12f)
+                                        }
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Pay Mode: $paymentTypeChoice",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (paymentTypeChoice) {
+                                        "PENDING" -> AlertRed
+                                        "CASH" -> OrganicGreen
+                                        "UPI" -> PrimaryGold
+                                        else -> PrimaryMilk
+                                    }
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "₹${String.format(Locale.US, "%.1f", finalCostCalculated)}",
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Black,
                             color = PrimaryMilk
@@ -1714,48 +2600,7 @@ fun SalesTab(
             }
         }
 
-        // Step 4: Payment Type Choice (CASH, UPI, BANK, PENDING)
-        item {
-            Text(
-                "4. Log Payment Mode",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val methods = listOf("CASH", "UPI", "BANK", "PENDING")
-                methods.forEach { method ->
-                    val isSelected = paymentTypeChoice == method
-                    Button(
-                        onClick = { paymentTypeChoice = method },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSelected) {
-                                when (method) {
-                                    "PENDING" -> AlertRed
-                                    "CASH" -> OrganicGreen
-                                    "UPI" -> PrimaryGold
-                                    else -> PrimaryMilk
-                                }
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(2.dp)
-                    ) {
-                        Text(method, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-
-        // SAVE BUTTON
+        // SAVE BILLING ACTION BUTTON
         item {
             Button(
                 onClick = {
@@ -1773,20 +2618,32 @@ fun SalesTab(
                             rateResolved,
                             paymentTypeChoice
                         )
+                        
+                        // Clear selected params for quick next entry
+                        selectedCustomer = null
+                        inputQuery = ""
+                        selectedMilkType = "Cow Milk"
+                        selectedLiters = 1.0
+                        rawLitersInput = "1.0"
+                        paymentTypeChoice = "CASH"
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(58.dp)
+                    .height(60.dp)
                     .testTag("save_sale_button"),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(16.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 8.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Save Sale Transaction",
+                        "Secure & Commit Transaction",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -1800,6 +2657,378 @@ fun SalesTab(
 // ==========================================
 // TAB 2: BILLS INVOICING MANANGER
 // ==========================================
+fun parseDateStr(dateStr: String, startOfDay: Boolean): Long? {
+    if (dateStr.isBlank()) return null
+    return try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val date = sdf.parse(dateStr) ?: return null
+        val cal = java.util.Calendar.getInstance().apply {
+            time = date
+            if (startOfDay) {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            } else {
+                set(java.util.Calendar.HOUR_OF_DAY, 23)
+                set(java.util.Calendar.MINUTE, 59)
+                set(java.util.Calendar.SECOND, 59)
+                set(java.util.Calendar.MILLISECOND, 999)
+            }
+        }
+        cal.timeInMillis
+    } catch (e: Exception) {
+        null
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdvancedFilterDialog(
+    currentStatus: String,
+    onStatusChange: (String) -> Unit,
+    currentTimeShift: String,
+    onTimeShiftChange: (String) -> Unit,
+    currentStartDateStr: String,
+    onStartDateChange: (String) -> Unit,
+    currentEndDateStr: String,
+    onEndDateChange: (String) -> Unit,
+    currentPaymentType: String,
+    onPaymentTypeChange: (String) -> Unit,
+    onDismissRequest: () -> Unit,
+    onResetFilters: () -> Unit
+) {
+    val context = LocalContext.current
+    val calendar = java.util.Calendar.getInstance()
+
+    Dialog(onDismissRequest = onDismissRequest) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.FilterAlt,
+                            contentDescription = null,
+                            tint = PrimaryMilk,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Filter Ledger",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                    IconButton(onClick = onDismissRequest) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+
+                // Section 1: Payment Status
+                Column {
+                    Text(
+                        text = "Payment Status",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val statuses = listOf("All" to "All", "PAID" to "Paid", "PENDING" to "Pending")
+                        statuses.forEach { (value, label) ->
+                            val selected = currentStatus == value
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (selected) PrimaryMilk.copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (selected) PrimaryMilk else Color.LightGray.copy(alpha = 0.3f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { onStatusChange(value) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) PrimaryMilk else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Section 1.5: Payment Type Method
+                Column {
+                    Text(
+                        text = "Payment Mode Method",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val methods = listOf(
+                            "All" to "All",
+                            "CASH" to "Cash",
+                            "UPI" to "UPI",
+                            "BANK" to "Bank",
+                            "NONE" to "None"
+                        )
+                        methods.forEach { (value, label) ->
+                            val selected = currentPaymentType == value
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (selected) PrimaryMilk.copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (selected) PrimaryMilk else Color.LightGray.copy(alpha = 0.3f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { onPaymentTypeChange(value) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) PrimaryMilk else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Section 2: Time Shifts
+                Column {
+                    Text(
+                        text = "Dairy Collection Shift",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val shifts = listOf(
+                            "All" to "All Day",
+                            "Morning" to "Morning (5am-12pm)",
+                            "Evening" to "Evening (12pm-10pm)"
+                        )
+                        shifts.forEach { (value, label) ->
+                            val selected = currentTimeShift == value
+                            val icon = when (value) {
+                                "Morning" -> Icons.Default.WbSunny
+                                "Evening" -> Icons.Default.NightsStay
+                                else -> Icons.Default.AccessTime
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (selected) PrimaryMilk.copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (selected) PrimaryMilk else Color.LightGray.copy(alpha = 0.3f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { onTimeShiftChange(value) }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (selected) PrimaryMilk else Color.Gray,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (value == "All") "All" else if (value == "Morning") "Morning" else "Evening",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selected) PrimaryMilk else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section 3: Custom Date Range Picker
+                Column {
+                    Text(
+                        text = "Custom Date Range",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Start Date Button
+                        OutlinedButton(
+                            onClick = {
+                                val dp = android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        onStartDateChange(String.format(java.util.Locale.US, "%04d-%02d-%02d", year, month + 1, day))
+                                    },
+                                    calendar.get(java.util.Calendar.YEAR),
+                                    calendar.get(java.util.Calendar.MONTH),
+                                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                                )
+                                dp.show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            border = BorderStroke(1.dp, if (currentStartDateStr.isNotEmpty()) PrimaryMilk else Color.LightGray.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "From Date",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = currentStartDateStr.ifEmpty { "Select..." },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (currentStartDateStr.isNotEmpty()) PrimaryMilk else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // End Date Button
+                        OutlinedButton(
+                            onClick = {
+                                val dp = android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        onEndDateChange(String.format(java.util.Locale.US, "%04d-%02d-%02d", year, month + 1, day))
+                                    },
+                                    calendar.get(java.util.Calendar.YEAR),
+                                    calendar.get(java.util.Calendar.MONTH),
+                                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                                )
+                                dp.show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            border = BorderStroke(1.dp, if (currentEndDateStr.isNotEmpty()) PrimaryMilk else Color.LightGray.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "To Date",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = currentEndDateStr.ifEmpty { "Select..." },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (currentEndDateStr.isNotEmpty()) PrimaryMilk else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (currentStartDateStr.isNotEmpty() || currentEndDateStr.isNotEmpty()) {
+                        TextButton(
+                            onClick = {
+                                onStartDateChange("")
+                                onEndDateChange("")
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Clear Custom Range", color = AlertRed, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+
+                // Section 4: Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onResetFilters) {
+                        Text("Reset All", color = Color.Gray, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = onDismissRequest,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Apply Filters", fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BillsTab(
     sales: List<SaleEntity>,
@@ -1808,159 +3037,593 @@ fun BillsTab(
     onInvoiceClick: (SaleEntity) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    
+    var showFilterDialog by remember { mutableStateOf(false) }
+    var filterStatus by remember { mutableStateOf("All") }
+    var filterTimeShift by remember { mutableStateOf("All") }
+    var filterStartDateStr by remember { mutableStateOf("") }
+    var filterEndDateStr by remember { mutableStateOf("") }
+    var filterPaymentType by remember { mutableStateOf("All") }
+    
+    val activeFilterCount = remember(filterStatus, filterTimeShift, filterStartDateStr, filterEndDateStr, filterPaymentType) {
+        var count = 0
+        if (filterStatus != "All") count++
+        if (filterTimeShift != "All") count++
+        if (filterStartDateStr.isNotEmpty()) count++
+        if (filterEndDateStr.isNotEmpty()) count++
+        if (filterPaymentType != "All") count++
+        count
+    }
 
-    val filteredInvoices = remember(searchQuery, dateFilter, sales) {
+    val filteredInvoices = remember(
+        searchQuery,
+        dateFilter,
+        sales,
+        filterStatus,
+        filterTimeShift,
+        filterStartDateStr,
+        filterEndDateStr,
+        filterPaymentType
+    ) {
         var pre = sales.filter {
             it.customerName.contains(searchQuery, ignoreCase = true) ||
                     it.milkType.contains(searchQuery, ignoreCase = true)
         }
 
-        // Date interval filters
-        val now = System.currentTimeMillis()
-        pre = when (dateFilter) {
-            "Today" -> pre.filter { now - it.createdAt < 86400000 }
-            "Week" -> pre.filter { now - it.createdAt < 86400000 * 7 }
-            "Month" -> pre.filter { now - it.createdAt < 86400000L * 30 }
-            else -> pre // All or customized
+        // Apply Status Filter
+        if (filterStatus != "All") {
+            pre = pre.filter { it.paymentStatus == filterStatus }
+        }
+
+        // Apply Payment Type Filter
+        if (filterPaymentType != "All") {
+            pre = pre.filter { it.paymentType == filterPaymentType }
+        }
+
+        // Apply Time Shift Filter
+        if (filterTimeShift != "All") {
+            pre = pre.filter { sale ->
+                val cal = java.util.Calendar.getInstance().apply { timeInMillis = sale.createdAt }
+                val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                when (filterTimeShift) {
+                    "Morning" -> hour in 5..11
+                    "Evening" -> hour in 12..21
+                    else -> true
+                }
+            }
+        }
+
+        // Apply Date Range
+        if (filterStartDateStr.isNotEmpty() || filterEndDateStr.isNotEmpty()) {
+            val startMs = parseDateStr(filterStartDateStr, true)
+            val endMs = parseDateStr(filterEndDateStr, false)
+            pre = pre.filter { sale ->
+                val matchesStart = startMs == null || sale.createdAt >= startMs
+                val matchesEnd = endMs == null || sale.createdAt <= endMs
+                matchesStart && matchesEnd
+            }
+        } else {
+            // Preset dates
+            val now = System.currentTimeMillis()
+            pre = when (dateFilter) {
+                "Today" -> pre.filter { now - it.createdAt < 86400000 }
+                "Week" -> pre.filter { now - it.createdAt < 86400000 * 7 }
+                "Month" -> pre.filter { now - it.createdAt < 86400000L * 30 }
+                else -> pre
+            }
         }
         pre
     }
 
-    Column(
+    val totalInvoiced = remember(filteredInvoices) { filteredInvoices.sumOf { it.totalAmount } }
+    val totalPaid = remember(filteredInvoices) { filteredInvoices.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount } }
+    val totalPending = remember(filteredInvoices) { filteredInvoices.filter { it.paymentStatus != "PAID" }.sumOf { it.totalAmount } }
+    val progressPercent = remember(totalInvoiced, totalPaid) {
+        if (totalInvoiced > 0) (totalPaid / totalInvoiced) else 1.0
+    }
+
+    if (showFilterDialog) {
+        AdvancedFilterDialog(
+            currentStatus = filterStatus,
+            onStatusChange = { filterStatus = it },
+            currentTimeShift = filterTimeShift,
+            onTimeShiftChange = { filterTimeShift = it },
+            currentStartDateStr = filterStartDateStr,
+            onStartDateChange = { 
+                filterStartDateStr = it
+                if (it.isNotEmpty() && dateFilter != "Custom Range") {
+                    onDateFilterChange("Custom Range")
+                }
+            },
+            currentEndDateStr = filterEndDateStr,
+            onEndDateChange = { 
+                filterEndDateStr = it
+                if (it.isNotEmpty() && dateFilter != "Custom Range") {
+                    onDateFilterChange("Custom Range")
+                }
+            },
+            currentPaymentType = filterPaymentType,
+            onPaymentTypeChange = { filterPaymentType = it },
+            onDismissRequest = { showFilterDialog = false },
+            onResetFilters = {
+                filterStatus = "All"
+                filterPaymentType = "All"
+                filterTimeShift = "All"
+                filterStartDateStr = ""
+                filterEndDateStr = ""
+                onDateFilterChange("All")
+            }
+        )
+    }
+
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Ledger Bills Invoices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = PrimaryMilk)
-        }
-        Text("Generate QR Codes, barcode matching, and download receipts instanly.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Searcbar inputs
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search by buyer name...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Date selector headers
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            val dateFilters = listOf("Today", "Week", "Month", "All")
-            dateFilters.forEach { item ->
-                val matches = dateFilter == item
-                Button(
-                    onClick = { onDateFilterChange(item) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (matches) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (matches) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
-                    contentPadding = PaddingValues(0.dp)
+        // Item 1: Header title (which scrolls up)
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "Ledger Bills & Invoices",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "Generate QR Codes, share records, and export invoices.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(PrimaryMilk.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(item, style = MaterialTheme.typography.labelSmall)
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = PrimaryMilk)
                 }
             }
+            Spacer(modifier = Modifier.height(14.dp))
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (filteredInvoices.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+        // Item 2: Dynamic KPIs card (which scrolls up)
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(50.dp))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("No billing logs found in interval.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filteredInvoices) { item ->
+                // Row of 3 mini KPI Cards
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Total Billed Card
                     Card(
-                        onClick = { onInvoiceClick(item) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
                     ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(PrimaryMilk.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ReceiptLong,
+                                        contentDescription = null,
+                                        tint = PrimaryMilk,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Billed",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "₹${totalInvoiced.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // Total Paid Card
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(OrganicGreen.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = OrganicGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Paid",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "₹${totalPaid.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = OrganicGreen
+                            )
+                        }
+                    }
+
+                    // Outstanding Pending Card
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(AlertRed.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PendingActions,
+                                        contentDescription = null,
+                                        tint = AlertRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Pending",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "₹${totalPending.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = AlertRed
+                            )
+                        }
+                    }
+                }
+
+                // Collection Efficiency Progress Indicator
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.DonutLarge,
+                                    contentDescription = null,
+                                    tint = PrimaryMilk,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "INV-#${item.id.take(6).uppercase()}",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = "Billing Interval Summary",
+                                    style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = PrimaryMilk
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = item.customerName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Black
-                                )
-                                Text(
-                                    text = "${item.liters}L of ${item.milkType}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
-                                )
-                                val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd hh:mm a", java.util.Locale.getDefault()) }
-                                Text(
-                                    text = sdf.format(java.util.Date(item.createdAt)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            Text(
+                                text = "${(progressPercent * 100).toInt()}% Paid",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (progressPercent > 0.8) OrganicGreen else PrimaryGold,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { progressPercent.toFloat() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = if (progressPercent > 0.85) OrganicGreen else if (progressPercent > 0.50) PrimaryMilk else PrimaryGold,
+                            trackColor = Color.LightGray.copy(alpha = 0.3f)
+                        )
+                    }
+                }
+            }
+        }
 
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "₹${item.totalAmount.toInt()}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold
+        // Sticky search and filter row
+        stickyHeader {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search by buyer name...") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PrimaryMilk,
+                                unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                            )
+                        )
+
+                        IconButton(
+                            onClick = { showFilterDialog = true },
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (activeFilterCount > 0) PrimaryMilk.copy(alpha = 0.12f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (item.paymentStatus == "PAID") OrganicGreen.copy(alpha = 0.1f)
-                                        else AlertRed.copy(alpha = 0.1f)
-                                    )
+                                .border(
+                                    1.dp,
+                                    if (activeFilterCount > 0) PrimaryMilk else Color.LightGray.copy(alpha = 0.4f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                Icon(
+                                    imageVector = Icons.Default.FilterList,
+                                    contentDescription = "Filter menu",
+                                    tint = if (activeFilterCount > 0) PrimaryMilk else Color.Gray,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                if (activeFilterCount > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(AlertRed)
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = 4.dp, y = (-4).dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = activeFilterCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Date range chips row (which is also sticky with search)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val dateFilters = if (filterStartDateStr.isNotEmpty() || filterEndDateStr.isNotEmpty()) {
+                            listOf("Today", "Week", "Month", "All", "Custom Range")
+                        } else {
+                            listOf("Today", "Week", "Month", "All")
+                        }
+
+                        dateFilters.forEach { item ->
+                            val matches = if (item == "Custom Range") {
+                                dateFilter == "Custom Range" || (filterStartDateStr.isNotEmpty() || filterEndDateStr.isNotEmpty())
+                            } else {
+                                dateFilter == item && filterStartDateStr.isEmpty() && filterEndDateStr.isEmpty()
+                            }
+                            FilterChip(
+                                selected = matches,
+                                onClick = {
+                                    if (item == "Custom Range") {
+                                        showFilterDialog = true
+                                    } else {
+                                        onDateFilterChange(item)
+                                        filterStartDateStr = ""
+                                        filterEndDateStr = ""
+                                    }
+                                },
+                                label = { Text(item, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PrimaryMilk,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = matches,
+                                    borderColor = Color.LightGray.copy(alpha = 0.3f),
+                                    selectedBorderColor = PrimaryMilk
+                                )
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
+        }
+
+        // Item list blocks:
+        if (filteredInvoices.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "No billing logs found with active filters.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        } else {
+            items(filteredInvoices) { item ->
+                Card(
+                    onClick = { onInvoiceClick(item) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(PrimaryMilk.copy(alpha = 0.1f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = item.paymentStatus,
+                                        text = "INV-#${item.id.take(6).uppercase()}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (item.paymentStatus == "PAID") OrganicGreen else AlertRed,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryMilk
                                     )
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = item.customerName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${item.liters}L of ${item.milkType}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val sdf = remember { java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()) }
+                            Text(
+                                text = sdf.format(java.util.Date(item.createdAt)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "₹${item.totalAmount.toInt()}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (item.paymentStatus == "PAID") OrganicGreen.copy(alpha = 0.12f)
+                                        else AlertRed.copy(alpha = 0.12f)
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = item.paymentStatus,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (item.paymentStatus == "PAID") OrganicGreen else AlertRed,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+        item {
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }
@@ -2437,30 +4100,135 @@ fun ReportsTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Enterprise Reports", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Icon(Icons.Default.Leaderboard, contentDescription = null, tint = PrimaryMilk)
+                Column {
+                    Text(
+                        "Enterprise Reports",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        "Real-time business analytics based on active database registers.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(PrimaryMilk.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Leaderboard, contentDescription = null, tint = PrimaryMilk)
+                }
             }
-            Text("Real-time dairy business analytics based on physical logistic metrics.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
         }
 
-        // Interval Toggle Buttons
+        // Interval Toggle Buttons (Filter Chip Style)
         item {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                val intervals = listOf("Today", "Weekly", "Monthly", "Yearly")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val intervals = listOf("Today", "Weekly", "Monthly", "Yearly", "Multi-Year")
                 intervals.forEach { interval ->
                     val isSelected = selectedIntervalFilter == interval
-                    Button(
+                    FilterChip(
+                        selected = isSelected,
                         onClick = { selectedIntervalFilter = interval },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSelected) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        label = { Text(interval, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryMilk,
+                            selectedLabelColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 2.dp),
-                        contentPadding = PaddingValues(0.dp)
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = Color.LightGray.copy(alpha = 0.3f),
+                            selectedBorderColor = PrimaryMilk
+                        )
+                    )
+                }
+            }
+        }
+
+        // LIVE DYNAMIC GRAPHICAL BUSINESS INSIGHTS
+        item {
+            val topVolumeType = remember(sales) {
+                sales.groupBy { it.milkType }
+                    .mapValues { it.value.sumOf { s -> s.liters } }
+                    .maxByOrNull { it.value }?.key ?: "Cow Milk"
+            }
+            val maxOutstandingDebtorName = remember(sales) {
+                sales.filter { it.paymentStatus == "PENDING" }
+                    .groupBy { it.customerName }
+                    .mapValues { it.value.sumOf { s -> s.totalAmount } }
+                    .maxByOrNull { it.value }?.key ?: "None Selected"
+            }
+            val maxOutstandingDebtorAmt = remember(sales) {
+                sales.filter { it.paymentStatus == "PENDING" }
+                    .groupBy { it.customerName }
+                    .mapValues { it.value.sumOf { s -> s.totalAmount } }
+                    .maxByOrNull { it.value }?.value ?: 0.0
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Dynamic Operational Insights",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = PrimaryMilk
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(interval, style = MaterialTheme.typography.labelSmall)
+                        Icon(Icons.Default.TrendingUp, contentDescription = null, tint = OrganicGreen, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Top category by sales: ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = topVolumeType,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = AlertRed, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Highest aging dues debtor: ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = if (maxOutstandingDebtorAmt > 0) "$maxOutstandingDebtorName (₹${maxOutstandingDebtorAmt.toInt()})" else "None",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (maxOutstandingDebtorAmt > 0) AlertRed else OrganicGreen
+                        )
                     }
                 }
             }
@@ -2468,46 +4236,248 @@ fun ReportsTab(
 
         // Analytics Cards List (Total sales, total liters, pending amount, collections, profit)
         item {
+            // Elegant revenue summary card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Overall Revenue Summary", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                    Text("Overall Gross Revenue", style = MaterialTheme.typography.labelMedium, color = Color.Gray, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("₹${totalRevenue.toInt()}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = PrimaryMilk)
-                        Card(colors = CardDefaults.cardColors(containerColor = OrganicGreen.copy(alpha = 0.12f))) {
+                        Text(
+                            "₹${totalRevenue.toInt()}",
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Black,
+                            color = PrimaryMilk
+                        )
+                        val collectionRate = if (totalRevenue > 0) (totalCollected / totalRevenue) else 1.0
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(OrganicGreen.copy(alpha = 0.12f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
                             Text(
-                                "Profit Margin: 35%",
+                                "Collected: ${(collectionRate * 100).toInt()}%",
                                 color = OrganicGreen,
                                 fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Collection Rate Indicator (Linear progress representing collection safety factor)
+                    val collectionProgress = if (totalRevenue > 0) (totalCollected / totalRevenue).toFloat().coerceIn(0f, 1f) else 1.0f
+                    LinearProgressIndicator(
+                        progress = { collectionProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = OrganicGreen,
+                        trackColor = Color.LightGray.copy(alpha = 0.3f)
+                    )
+                }
+            }
+        }
 
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Unsettled Debts", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                            Text("₹${totalPending.toInt()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = AlertRed)
+        // Expanded 2x2 grid of modern KPI card items
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // KPI: Outstanding Debts
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(AlertRed.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingDown,
+                                        contentDescription = null,
+                                        tint = AlertRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Dues",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "₹${totalPending.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = AlertRed
+                            )
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Volume Transacted", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                            Text("${String.format("%.1f", totalLiters)} L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = PrimaryMilk)
+                    }
+
+                    // KPI: Volume Transacted
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(PrimaryMilk.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WaterDrop,
+                                        contentDescription = null,
+                                        tint = PrimaryMilk,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Volume",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "${String.format("%.1f", totalLiters)} L",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = PrimaryMilk
+                            )
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Payment Index", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                            Text("₹${totalCollected.toInt()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OrganicGreen)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // KPI: Collected
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(OrganicGreen.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Savings,
+                                        contentDescription = null,
+                                        tint = OrganicGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Collected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "₹${totalCollected.toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = OrganicGreen
+                            )
+                        }
+                    }
+
+                    // KPI: Net margins (35% standard)
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(PrimaryGold.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingUp,
+                                        contentDescription = null,
+                                        tint = PrimaryGold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Est. Profit",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "₹${(totalRevenue * 0.35).toInt()}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = PrimaryGold
+                            )
                         }
                     }
                 }
@@ -2523,7 +4493,7 @@ fun ReportsTab(
                 cal.set(java.util.Calendar.MINUTE, 0)
                 cal.set(java.util.Calendar.SECOND, 0)
                 cal.set(java.util.Calendar.MILLISECOND, 0)
-                
+
                 val labels = mutableListOf<String>()
                 val milkValues = DoubleArray(7) { 0.0 }
                 val amountValues = DoubleArray(7) { 0.0 }
@@ -2535,7 +4505,7 @@ fun ReportsTab(
                         for (i in 0 until 7) {
                             val startHour = if (i == 0) 0 else hourIntervals[i-1]
                             val endHour = hourIntervals[i]
-                            
+
                             val startCal = java.util.Calendar.getInstance().apply {
                                 set(java.util.Calendar.HOUR_OF_DAY, startHour)
                                 set(java.util.Calendar.MINUTE, 0)
@@ -2550,7 +4520,7 @@ fun ReportsTab(
                             }
                             val s = startCal.timeInMillis
                             val e = endCal.timeInMillis
-                            
+
                             val intervalSales = sales.filter { it.createdAt in s until e }
                             milkValues[i] = intervalSales.sumOf { it.liters }
                             amountValues[i] = intervalSales.sumOf { it.totalAmount }
@@ -2578,7 +4548,7 @@ fun ReportsTab(
                             val start = dayCal.timeInMillis
                             dayCal.add(java.util.Calendar.DAY_OF_YEAR, 1)
                             val end = dayCal.timeInMillis
-                            
+
                             val daySales = sales.filter { it.createdAt in start until end }
                             milkValues[i] = daySales.sumOf { it.liters }
                             amountValues[i] = daySales.sumOf { it.totalAmount }
@@ -2593,7 +4563,7 @@ fun ReportsTab(
                         monthCal.set(java.util.Calendar.SECOND, 0)
                         monthCal.set(java.util.Calendar.MILLISECOND, 0)
                         val firstOfMonth = monthCal.timeInMillis
-                        
+
                         for (i in 0 until 7) {
                             val start = firstOfMonth + i * 4 * 24 * 3600 * 1000L
                             val end = start + 4 * 24 * 3600 * 1000L
@@ -2610,20 +4580,45 @@ fun ReportsTab(
                             targetCal.add(java.util.Calendar.MONTH, offset)
                             val mIndex = targetCal.get(java.util.Calendar.MONTH)
                             labels.add(monthCodes[mIndex])
-                            
+
                             targetCal.set(java.util.Calendar.DAY_OF_MONTH, 1)
                             targetCal.set(java.util.Calendar.HOUR_OF_DAY, 0)
                             targetCal.set(java.util.Calendar.MINUTE, 0)
                             targetCal.set(java.util.Calendar.SECOND, 0)
                             targetCal.set(java.util.Calendar.MILLISECOND, 0)
                             val start = targetCal.timeInMillis
-                            
+
                             targetCal.add(java.util.Calendar.MONTH, 1)
                             val end = targetCal.timeInMillis
-                            
+
                             val monthlySales = sales.filter { it.createdAt in start until end }
                             milkValues[i] = monthlySales.sumOf { it.liters }
                             amountValues[i] = monthlySales.sumOf { it.totalAmount }
+                        }
+                    }
+                    "Multi-Year" -> {
+                        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                        for (i in 0 until 7) {
+                            val targetYear = currentYear - 6 + i
+                            labels.add(targetYear.toString())
+
+                            val startCal = java.util.Calendar.getInstance().apply {
+                                set(java.util.Calendar.YEAR, targetYear)
+                                set(java.util.Calendar.MONTH, java.util.Calendar.JANUARY)
+                                set(java.util.Calendar.DAY_OF_MONTH, 1)
+                                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                set(java.util.Calendar.MINUTE, 0)
+                                set(java.util.Calendar.SECOND, 0)
+                                set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            val start = startCal.timeInMillis
+
+                            startCal.add(java.util.Calendar.YEAR, 1)
+                            val end = startCal.timeInMillis
+
+                            val yearlySales = sales.filter { it.createdAt in start until end }
+                            milkValues[i] = yearlySales.sumOf { it.liters }
+                            amountValues[i] = yearlySales.sumOf { it.totalAmount }
                         }
                     }
                 }
@@ -2650,6 +4645,7 @@ fun ReportsTab(
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -2659,20 +4655,22 @@ fun ReportsTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Business Intelligence Insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = PrimaryGold.copy(alpha = 0.1f))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PrimaryGold.copy(alpha = 0.12f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
                                 text = "Active Trend",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = PrimaryGold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                color = PrimaryGold
                             )
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Legend Panel
                     Row(
@@ -2682,30 +4680,32 @@ fun ReportsTab(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(12.dp)
-                                .background(PrimaryMilk, RoundedCornerShape(2.dp))
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryMilk)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Milk Yield (Liters)",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = "Yield (L)",
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color.Gray
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Box(
                             modifier = Modifier
-                                .size(12.dp)
-                                .background(OrganicGreen, RoundedCornerShape(2.dp))
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(OrganicGreen)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Sales Amount (₹)",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = "Revenue (₹)",
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color.Gray
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     // Line/Bar Trend Curve Canvas drawing
                     Canvas(
@@ -2784,9 +4784,9 @@ fun ReportsTab(
                             }
                         }
                         drawPath(
-                            path = amountPath,
-                            color = OrganicGreen,
-                            style = Stroke(width = 8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                             path = amountPath,
+                             color = OrganicGreen,
+                             style = Stroke(width = 8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                         )
 
                         // Draw golden dot nodes inside Milk columns for peak points
@@ -2821,7 +4821,7 @@ fun ReportsTab(
                         labels.forEach { l ->
                             Text(
                                 text = l,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Gray
                             )
@@ -2835,13 +4835,15 @@ fun ReportsTab(
         if (isCommunityActive) {
             item {
                 Card(
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.04f)),
+                    shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(2.dp, PrimaryGold)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Shield, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "Community Owner Command Panel",
                                 style = MaterialTheme.typography.titleMedium,
@@ -2849,7 +4851,8 @@ fun ReportsTab(
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                         }
-                        Text("Overall system report across all registered sellers in your logistics coop.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Overall system report across all registered coop dairy sellers.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         Spacer(modifier = Modifier.height(14.dp))
 
                         OverallCommunityStatRow("Total Verified Sellers", "4")
@@ -2858,11 +4861,11 @@ fun ReportsTab(
                         OverallCommunityStatRow("Pending Recovery Status", "₹4,100")
 
                         Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = Color.LightGray)
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Best Performance Comparison
-                        Text("Active Sellers Performance", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                        Text("Active Sellers Performance", fontWeight = FontWeight.Black, style = MaterialTheme.typography.labelLarge)
                         Spacer(modifier = Modifier.height(8.dp))
 
                         CommunitySellerStatRow("Arun Kumar (You)", "120L transacted", "₹4,500 Sold")
@@ -2877,20 +4880,23 @@ fun ReportsTab(
         // DETAILED LEDGER TABLE
         item {
             Text("Detailed Ledger Table", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     // Header Row
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Customer", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
-                        Text("Liters", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text("Paid/Pending", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
-                        Text("Total", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("Customer", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                        Text("Liters", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("Paid/Pending", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                        Text("Total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     }
-                    HorizontalDivider(color = Color.LightGray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     if (sales.isEmpty()) {
                         Text(
@@ -2903,7 +4909,8 @@ fun ReportsTab(
                         sales.forEach { item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(item.customerName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.5f), overflow = TextOverflow.Ellipsis, maxLines = 1)
                                 Text("${item.liters}L", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -2911,12 +4918,12 @@ fun ReportsTab(
                                     item.paymentStatus,
                                     color = if (item.paymentStatus == "PAID") OrganicGreen else AlertRed,
                                     fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1.5f)
                                 )
                                 Text("₹${item.totalAmount.toInt()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
                             }
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
                         }
                     }
                 }
@@ -2935,11 +4942,12 @@ fun ReportsTab(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OrganicGreen),
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Export Excel")
+                    Text("Export Excel", fontWeight = FontWeight.Bold)
                 }
 
                 Button(
@@ -2948,11 +4956,12 @@ fun ReportsTab(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Export PDF")
+                    Text("Export PDF", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2987,7 +4996,7 @@ fun CommunitySellerStatRow(name: String, detailsLeft: String, revenueRight: Stri
 }
 
 // ==========================================
-// TAB 4: SETTINGS, PROFILE & PRICES MANAGER
+// TAB 4: SETTINGS & PROFILE
 // ==========================================
 @Composable
 fun SettingsTab(
@@ -3003,7 +5012,6 @@ fun SettingsTab(
     isLightTheme: Boolean,
     onThemeToggleChange: (Boolean) -> Unit,
     onSaveProfile: (String, String, String, String, String) -> Unit,
-    onAddPrice: (String, Double) -> Unit,
     onAddCustomer: (String, String, String) -> Unit,
     onDeleteCustomer: (String) -> Unit,
     onCommunityToggleChange: (Boolean) -> Unit,
@@ -3019,10 +5027,6 @@ fun SettingsTab(
     var mEmail by remember(email) { mutableStateOf(email) }
     var mPass by remember(password) { mutableStateOf(password) }
     var passVisible by remember { mutableStateOf(false) }
-
-    // Milk rates editing variables
-    var selectedEditType by remember { mutableStateOf("Cow Milk") }
-    var editPriceInput by remember { mutableStateOf("50") }
 
     // Customer register setups
     var registerName by remember { mutableStateOf("") }
@@ -3048,35 +5052,39 @@ fun SettingsTab(
                         value = bName,
                         onValueChange = { bName = it },
                         label = { Text("Cooperative Business Name") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = oName,
                         onValueChange = { oName = it },
                         label = { Text("Owner Full Name") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = mPhone,
                         onValueChange = { mPhone = it },
                         label = { Text("Logistics Phone Contact") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = mEmail,
                         onValueChange = { mEmail = it },
                         label = { Text("Primary Email Address") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = mPass,
                         onValueChange = { mPass = it },
                         label = { Text("ERP Security Password") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = if (passVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -3090,6 +5098,7 @@ fun SettingsTab(
                         },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = { onSaveProfile(bName, oName, mPhone, mEmail, mPass) },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
@@ -3097,67 +5106,6 @@ fun SettingsTab(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Update Profile")
-                    }
-                }
-            }
-        }
-
-        // Inline pricing update configurations per milking category
-        item {
-            Text("Milk Pricing Configurations Manager", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Select Milk Category Rate", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("Cow Milk", "Buffalo Milk", "A2 Milk").forEach { type ->
-                            val active = selectedEditType == type
-                            Button(
-                                onClick = {
-                                    selectedEditType = type
-                                    editPriceInput = prices.find { it.milkType == type }?.currentPrice?.toInt()?.toString() ?: "50"
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (active) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant,
-                                    contentColor = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text(type, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = editPriceInput,
-                        onValueChange = { editPriceInput = it },
-                        label = { Text("New Price per Liter (₹)") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-
-                    Button(
-                        onClick = {
-                            val doublePrice = editPriceInput.toDoubleOrNull()
-                            if (doublePrice != null && doublePrice > 0) {
-                                onAddPrice(selectedEditType, doublePrice)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = OrganicGreen),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Deactivate Old & Add Active Price", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -3173,19 +5121,20 @@ fun SettingsTab(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Add dairy sync profile", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = registerName,
                         onValueChange = { registerName = it },
                         label = { Text("Customer/Retail Outlet Name") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = registerPhone,
                         onValueChange = { registerPhone = it },
                         label = { Text("Phone Number") },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                     )
@@ -3517,7 +5466,7 @@ fun QuickAddCustomerDialog(
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun InventoryTab(
     prices: List<PriceConfigEntity>,
@@ -3542,6 +5491,16 @@ fun InventoryTab(
     // State maps for current active inputs
     val stockInputs = remember { mutableStateMapOf<String, String>() }
     val rateInputs = remember { mutableStateMapOf<String, String>() }
+
+    // State to toggle between Daily Stock Logs & Category Pricing configurations manager
+    var showOnlyCategoriesManager by remember { mutableStateOf(false) }
+
+    // Dynamic states for milk category pricing manager
+    var selectedEditType by remember(prices) { mutableStateOf(prices.firstOrNull()?.milkType ?: "Cow Milk") }
+    var editPriceInput by remember(selectedEditType, prices) {
+        val found = prices.find { it.milkType == selectedEditType }
+        mutableStateOf(found?.currentPrice?.toInt()?.toString() ?: "50")
+    }
 
     // Watch today's date and inventory to populate existing stock values
     val currentSelectedInventory = remember(inventories, dateStringInput) {
@@ -3607,7 +5566,7 @@ fun InventoryTab(
         ) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.padding(end = 8.dp)
+                modifier = Modifier.background(Color.LightGray.copy(alpha = 0.2f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -3616,15 +5575,16 @@ fun InventoryTab(
                 )
             }
 
+            Spacer(modifier = Modifier.width(14.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "🥛 Stock & Catalog Register",
+                    "Stock & Catalog Register",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = PrimaryMilk
+                    fontWeight = FontWeight.Black
                 )
                 Text(
-                    "Set daily milk volume capability and manage category catalog",
+                    "Set milk volume limits and configure pricing lists.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
@@ -3633,181 +5593,330 @@ fun InventoryTab(
             Button(
                 onClick = { showAddCategoryDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("New", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // DAILY STOCKING MANAGER FORM
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.2f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Configure Inventory & Price Catalog",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryMilk
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Set today's collections (liters) and dynamic baseline rate per liter.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                OutlinedTextField(
-                    value = dateStringInput,
-                    onValueChange = { dateStringInput = it },
-                    label = { Text("Log Date (YYYY-MM-DD)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, tint = PrimaryMilk)
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Iterate over existing categories loaded dynamically!
-                prices.forEach { config ->
-                    val type = config.milkType
-                    val currentVal = stockInputs[type] ?: ""
-                    val rateVal = rateInputs[type] ?: ""
-                    val soldToday = todaySalesMap[type] ?: 0.0
-
-                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = type,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = PrimaryMilk
-                            )
-
-                            Text(
-                                text = "Sold Today: ${String.format(java.util.Locale.US, "%.1f", soldToday)} L",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = currentVal,
-                                onValueChange = { stockInputs[type] = it },
-                                label = { Text("Stock available Today (L)") },
-                                placeholder = { Text("e.g. 100") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PrimaryMilk,
-                                    unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
-                                )
-                            )
-
-                            OutlinedTextField(
-                                value = rateVal,
-                                onValueChange = { rateInputs[type] = it },
-                                label = { Text("Rate per Liter (₹)") },
-                                placeholder = { Text("e.g. 50") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PrimaryMilk,
-                                    unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
-                                )
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val cow = stockInputs["Cow Milk"]?.toDoubleOrNull() ?: 0.0
-                        val buf = stockInputs["Buffalo Milk"]?.toDoubleOrNull() ?: 0.0
-                        val a2 = stockInputs["A2 Milk"]?.toDoubleOrNull() ?: 0.0
-
-                        val customPairs = stockInputs.filterKeys { it != "Cow Milk" && it != "Buffalo Milk" && it != "A2 Milk" }
-                            .map { "${it.key}:${it.value.toDoubleOrNull() ?: 0.0}" }
-                            .joinToString(",")
-
-                        // Save the stock levels
-                        onSaveInventoryStock(cow, buf, a2, dateStringInput, customPairs)
-
-                        // Save the edited rates/prices in database dynamically!
-                        var priceConfigUpdated = false
-                        prices.forEach { config ->
-                            val enteredRateStr = rateInputs[config.milkType] ?: ""
-                            val enteredRate = enteredRateStr.toDoubleOrNull()
-                            if (enteredRate != null && enteredRate != config.currentPrice) {
-                                onUpdatePrice(config.milkType, enteredRate)
-                                priceConfigUpdated = true
-                            }
-                        }
-
-                        val feedbackMsg = if (priceConfigUpdated) {
-                            "Stock updated and rates synchronized for $dateStringInput!"
-                        } else {
-                            "Stock levels recorded in database ledger."
-                        }
-                        Toast.makeText(context, feedbackMsg, Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Lock & Log Today's Registers", fontWeight = FontWeight.ExtraBold, color = Color.White)
-                }
+                Text("Category", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
             }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        // TOGGLE ROW FOR CATEGORY MANAGEMENT VS DAILY STOCK LOGS
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            val isEditingStock = !showOnlyCategoriesManager
+            Button(
+                onClick = { showOnlyCategoriesManager = false },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isEditingStock) PrimaryMilk else Color.Transparent,
+                    contentColor = if (isEditingStock) Color.White else Color.Gray
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 10.dp),
+                elevation = null
+            ) {
+                Text("Daily Stock Logs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            }
+            Button(
+                onClick = { showOnlyCategoriesManager = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (showOnlyCategoriesManager) PrimaryMilk else Color.Transparent,
+                    contentColor = if (showOnlyCategoriesManager) Color.White else Color.Gray
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 10.dp),
+                elevation = null
+            ) {
+                Text("Category Rates", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (showOnlyCategoriesManager) {
+            // BASE CATEGORY BASE PRICE MANAGER PANEL
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Base Category Rates Manager",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = PrimaryMilk
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Edit pricing baseline configurations for all registered grades.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Select Milk Grade",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Horizontal scrollable categories select list
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        prices.forEach { config ->
+                            val active = selectedEditType == config.milkType
+                            FilterChip(
+                                selected = active,
+                                onClick = { selectedEditType = config.milkType },
+                                label = { Text(config.milkType, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PrimaryMilk,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = active,
+                                    borderColor = Color.LightGray.copy(alpha = 0.3f),
+                                    selectedBorderColor = PrimaryMilk
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = editPriceInput,
+                        onValueChange = { editPriceInput = it },
+                        label = { Text("Base Price (₹/L)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryMilk,
+                            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            val doublePrice = editPriceInput.toDoubleOrNull()
+                            if (doublePrice != null && doublePrice > 0) {
+                                onUpdatePrice(selectedEditType, doublePrice)
+                                Toast.makeText(context, "Baseline rate for $selectedEditType updated to ₹$doublePrice!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Please enter a valid rate price", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = OrganicGreen),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Text("Update Base Class Rate", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        } else {
+            // DAILY COLLECTION STOCK LEVEL AND DYNAMIC PRICING FORM
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Configure Inventory & Price Catalog",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = PrimaryMilk
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Set collections capability (liters) and active dynamic prices.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = dateStringInput,
+                        onValueChange = { dateStringInput = it },
+                        label = { Text("Log Date (YYYY-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.DateRange, contentDescription = null, tint = PrimaryMilk)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryMilk,
+                            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Iterate over existing categories loaded dynamically!
+                    prices.forEach { config ->
+                        val type = config.milkType
+                        val currentVal = stockInputs[type] ?: ""
+                        val rateVal = rateInputs[type] ?: ""
+                        val soldToday = todaySalesMap[type] ?: 0.0
+
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = type,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = PrimaryMilk
+                                )
+
+                                Text(
+                                    text = "Sold Today: ${String.format(java.util.Locale.US, "%.1f", soldToday)} L",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = currentVal,
+                                    onValueChange = { stockInputs[type] = it },
+                                    label = { Text("Stock (L)") },
+                                    placeholder = { Text("e.g. 100") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = PrimaryMilk,
+                                        unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                                    )
+                                )
+
+                                OutlinedTextField(
+                                    value = rateVal,
+                                    onValueChange = { rateInputs[type] = it },
+                                    label = { Text("Price (₹/L)") },
+                                    placeholder = { Text("e.g. 50") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = PrimaryMilk,
+                                        unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            val cow = stockInputs["Cow Milk"]?.toDoubleOrNull() ?: 0.0
+                            val buf = stockInputs["Buffalo Milk"]?.toDoubleOrNull() ?: 0.0
+                            val a2 = stockInputs["A2 Milk"]?.toDoubleOrNull() ?: 0.0
+
+                            val customPairs = stockInputs.filterKeys { it != "Cow Milk" && it != "Buffalo Milk" && it != "A2 Milk" }
+                                .map { "${it.key}:${it.value.toDoubleOrNull() ?: 0.0}" }
+                                .joinToString(",")
+
+                            // Save the stock levels
+                            onSaveInventoryStock(cow, buf, a2, dateStringInput, customPairs)
+
+                            // Save the edited rates/prices in database dynamically!
+                            var priceConfigUpdated = false
+                            prices.forEach { config ->
+                                val enteredRateStr = rateInputs[config.milkType] ?: ""
+                                val enteredRate = enteredRateStr.toDoubleOrNull()
+                                if (enteredRate != null && enteredRate != config.currentPrice) {
+                                    onUpdatePrice(config.milkType, enteredRate)
+                                    priceConfigUpdated = true
+                                }
+                            }
+
+                            val feedbackMsg = if (priceConfigUpdated) {
+                                "Stock updated and rates synchronized for $dateStringInput!"
+                            } else {
+                                "Stock levels recorded in database ledger."
+                            }
+                            Toast.makeText(context, feedbackMsg, Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Text("Lock & Log Today's Registers", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         // MANAGED MILK CATEGORY CATALOG & HISTORICAL DATA
         Text(
-            "📋 Registered Categories & Previous Price Logs",
+            "Registered Categories & baseline catalog",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = PrimaryMilk
         )
         Text(
-            "Track historical pricing logs and previous baseline price alterations.",
+            "Track baseline parameters and modification logs.",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (prices.isEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
             ) {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -3819,7 +5928,7 @@ fun InventoryTab(
                 val matchingLogs = priceLogs.filter { it.milkType == config.milkType }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
                 ) {
@@ -3830,50 +5939,57 @@ fun InventoryTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.WaterDrop,
-                                    contentDescription = null,
-                                    tint = PrimaryMilk,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(PrimaryMilk.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WaterDrop,
+                                        contentDescription = null,
+                                        tint = PrimaryMilk,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = config.milkType,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = PrimaryMilk
+                                    fontWeight = FontWeight.Black,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onBackground
                                 )
                             }
                             Text(
-                                text = "Current Rate: ₹${config.currentPrice} / L",
+                                text = "₹${config.currentPrice}/L",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = OrganicGreen
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             "Previous Rate Logs History:",
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.DarkGray
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         if (matchingLogs.isEmpty()) {
                             Text(
-                                "No previous pricing modifications found. Brand remains at original baseline of ₹${config.currentPrice}.",
+                                "No previous pricing modifications found.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray,
-                                modifier = Modifier.padding(start = 4.dp)
+                                color = Color.Gray
                             )
                         } else {
                             matchingLogs.sortedByDescending { it.timestamp }.forEach { log ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                                        .padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -3884,12 +6000,12 @@ fun InventoryTab(
                                     }
                                     Text(
                                         text = dateStr,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = Color.Gray
                                     )
                                     Text(
                                         text = "₹${log.oldPrice} ➔ ₹${log.newPrice}",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
                                         color = PrimaryMilk
                                     )
@@ -3905,16 +6021,22 @@ fun InventoryTab(
 
         // HISTORICAL REGISTERS SECTION
         Text(
-            "📜 Historical Stock Registers",
+            "Historical Stock Registers",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = PrimaryMilk
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Secure ledger collection database logs history.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray
+        )
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (inventories.isEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             ) {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -3925,11 +6047,11 @@ fun InventoryTab(
             inventories.forEach { stock ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
                     border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -3937,7 +6059,7 @@ fun InventoryTab(
                         ) {
                             Text(
                                 stock.dateStr,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.Black,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = PrimaryMilk
                             )
@@ -3957,7 +6079,7 @@ fun InventoryTab(
 
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         // Display details layout
                         val details = remember(stock) {
@@ -3984,11 +6106,11 @@ fun InventoryTab(
                             details.forEach { text ->
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Text(text, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                    Text(text, style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -4004,16 +6126,16 @@ fun InventoryTab(
     if (showAddCategoryDialog) {
         Dialog(onDismissRequest = { showAddCategoryDialog = false }) {
             Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                border = BorderStroke(1.dp, PrimaryMilk)
+                border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.4f))
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
                         "Create New Milk Category",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                         color = PrimaryMilk
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -4030,10 +6152,15 @@ fun InventoryTab(
                         onValueChange = { newCategoryName = it },
                         label = { Text("Category Name (e.g. Goat Milk)") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryMilk,
+                            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                        )
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
                         value = newCategoryPrice,
@@ -4041,17 +6168,23 @@ fun InventoryTab(
                         label = { Text("Baseline Rate per Liter (₹)") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryMilk,
+                            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                        )
                     )
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(onClick = { showAddCategoryDialog = false }) {
-                            Text("Cancel", color = AlertRed)
+                            Text("Cancel", color = AlertRed, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -4066,13 +6199,796 @@ fun InventoryTab(
                                     Toast.makeText(context, "Please write a name", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk)
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Add Category")
+                            Text("Add Category", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun CustomersTab(
+    customers: List<CustomerEntity>,
+    sales: List<SaleEntity>,
+    selectedCustomer: CustomerEntity?,
+    onSelectCustomer: (CustomerEntity?) -> Unit,
+    onUpdateCustomerDetails: (String, String, String?, String, String?, String?) -> Unit,
+    onSettlePayment: (SaleEntity, String) -> Unit,
+    onTriggerQuickAdd: () -> Unit,
+    onBackToDashboard: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    
+    if (selectedCustomer != null) {
+        CustomerProfileView(
+            customer = selectedCustomer,
+            sales = sales,
+            onBack = { onSelectCustomer(null) },
+            onUpdateDetails = onUpdateCustomerDetails,
+            onSettlePayment = onSettlePayment
+        )
+    } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBackToDashboard,
+                        modifier = Modifier.background(Color.LightGray.copy(alpha = 0.15f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = PrimaryMilk
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(14.dp))
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Customer Ledgers",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            text = "Manage accounts, outstanding dues & deliveries",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                // Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search customer accounts...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = PrimaryMilk) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryMilk,
+                        unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                    )
+                )
+
+                val filteredCustomers = remember(searchQuery, customers) {
+                    if (searchQuery.isBlank()) customers
+                    else customers.filter { it.name.contains(searchQuery, ignoreCase = true) || (it.phone?.contains(searchQuery) == true) }
+                }
+
+                if (filteredCustomers.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Group, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(36.dp))
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "No customers found",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Add new customer ledger profiles using the plus button below.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
+                        }
+                    }
+                } else {
+                    val listState = rememberLazyListState()
+                    val coroutineScope = rememberCoroutineScope()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        // Left-side alphabetical fast-scroller
+                        val alphabet = ('A'..'Z').toList()
+                        Column(
+                            modifier = Modifier
+                                .width(28.dp)
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState())
+                                .padding(end = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            alphabet.forEach { letter ->
+                                val hasCustomer = remember(filteredCustomers) {
+                                    filteredCustomers.any { it.name.trim().startsWith(letter, ignoreCase = true) }
+                                }
+                                Text(
+                                    text = letter.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = if (hasCustomer) FontWeight.Black else FontWeight.Normal),
+                                    color = if (hasCustomer) PrimaryMilk else Color.Gray.copy(alpha = 0.4f),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (hasCustomer) PrimaryMilk.copy(alpha = 0.05f) else Color.Transparent)
+                                        .clickable(enabled = hasCustomer) {
+                                            val index = filteredCustomers.indexOfFirst { customer ->
+                                                customer.name.trim().startsWith(letter, ignoreCase = true)
+                                            }
+                                            if (index != -1) {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(index)
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp, horizontal = 4.dp)
+                                )
+                            }
+                        }
+
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(filteredCustomers) { customer ->
+                                val customerSales = remember(sales, customer.id) {
+                                    sales.filter { it.customerId == customer.id }
+                                }
+                                val pendingAmount = remember(customerSales) {
+                                    customerSales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+                                }
+
+                                Card(
+                                    onClick = { onSelectCustomer(customer) },
+                                    modifier = Modifier.fillMaxWidth().testTag("customer_profile_card_${customer.id}"),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(CircleShape)
+                                                .background(PrimaryMilk.copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = customer.name.take(2).uppercase(),
+                                                fontWeight = FontWeight.Black,
+                                                color = PrimaryMilk,
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = customer.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = customer.phone ?: "No phone listed",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = "₹${pendingAmount.toInt()}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Black,
+                                                color = if (pendingAmount > 0) AlertRed else OrganicGreen
+                                            )
+                                            Text(
+                                                text = if (pendingAmount > 0) "Dues pending" else "Clear",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (pendingAmount > 0) AlertRed else OrganicGreen,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Circular FAB with + icon to add new customer
+            FloatingActionButton(
+                onClick = onTriggerQuickAdd,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp)
+                    .testTag("add_customer_fab"),
+                containerColor = PrimaryMilk,
+                contentColor = Color.White,
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Customer",
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomerProfileView(
+    customer: CustomerEntity,
+    sales: List<SaleEntity>,
+    onBack: () -> Unit,
+    onUpdateDetails: (String, String, String?, String, String?, String?) -> Unit,
+    onSettlePayment: (SaleEntity, String) -> Unit
+) {
+    val context = LocalContext.current
+    
+    // Edit details states
+    var phoneInput by remember(customer.id) { mutableStateOf(customer.phone ?: "") }
+    var addressInput by remember(customer.id) { mutableStateOf(customer.address ?: "") }
+    var notesInput by remember(customer.id) { mutableStateOf(customer.notes ?: "") }
+    var qrPreferenceSelected by remember(customer.id) { mutableStateOf(customer.qrPreference) }
+    
+    // Switch between Details vs Ledger tabs in customer profile
+    var selectedProfileTabIndex by remember { mutableIntStateOf(0) }
+    var profileSalesFilter by remember { mutableStateOf("All") }
+    
+    val customerSales = remember(sales, customer.id) {
+        sales.filter { it.customerId == customer.id }
+    }
+    
+    val filteredProfileSales = remember(customerSales, profileSalesFilter) {
+        when (profileSalesFilter) {
+            "Paid" -> customerSales.filter { it.paymentStatus == "PAID" }
+            "Pending" -> customerSales.filter { it.paymentStatus == "PENDING" }
+            else -> customerSales
+        }
+    }
+    
+    val totalPending = remember(customerSales) {
+        customerSales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+    }
+    
+    val totalPaid = remember(customerSales) {
+        customerSales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+    }
+    
+    val totalLiters = remember(customerSales) {
+        customerSales.sumOf { it.liters }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Appbar Back & Title
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.background(Color.LightGray.copy(alpha = 0.2f), CircleShape)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PrimaryMilk)
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = customer.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "Customer Ledger & Account Profile",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+
+        // 3 Key KPI cards
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Pending Debt
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(AlertRed.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.HourglassEmpty, contentDescription = null, tint = AlertRed, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Pending Due", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(
+                            "₹${totalPending.toInt()}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = AlertRed
+                        )
+                    }
+                }
+
+                // Total Paid
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(OrganicGreen.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = OrganicGreen, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Total Paid", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(
+                            "₹${totalPaid.toInt()}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = OrganicGreen
+                        )
+                    }
+                }
+
+                // Liters
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryMilk.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.WaterDrop, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Total Liters", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${String.format(java.util.Locale.US, "%.1f", totalLiters)}L",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = PrimaryMilk
+                        )
+                    }
+                }
+            }
+        }
+
+        // Inner profile section selection tabs
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Button(
+                    onClick = { selectedProfileTabIndex = 0 },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedProfileTabIndex == 0) PrimaryMilk else Color.Transparent,
+                        contentColor = if (selectedProfileTabIndex == 0) Color.White else Color.Gray
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    elevation = null
+                ) {
+                    Text("Customer Info", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(
+                    onClick = { selectedProfileTabIndex = 1 },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedProfileTabIndex == 1) PrimaryMilk else Color.Transparent,
+                        contentColor = if (selectedProfileTabIndex == 1) Color.White else Color.Gray
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    elevation = null
+                ) {
+                    Text("Purchase History", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+
+        if (selectedProfileTabIndex == 0) {
+            // Additional Info Form Field Card
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            "Delivery & Contact Details",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = PrimaryMilk
+                        )
+
+                        OutlinedTextField(
+                            value = phoneInput,
+                            onValueChange = { phoneInput = it },
+                            label = { Text("Logistics Contact Number") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = PrimaryMilk) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PrimaryMilk,
+                                unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                            )
+                        )
+
+                        OutlinedTextField(
+                            value = addressInput,
+                            onValueChange = { addressInput = it },
+                            label = { Text("Delivery Address / Client Base") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = false,
+                            maxLines = 2,
+                            leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = PrimaryMilk) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PrimaryMilk,
+                                unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                            )
+                        )
+
+                        OutlinedTextField(
+                            value = notesInput,
+                            onValueChange = { notesInput = it },
+                            label = { Text("Operational Notes / Preferences") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = false,
+                            maxLines = 3,
+                            leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null, tint = PrimaryMilk) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PrimaryMilk,
+                                unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                            )
+                        )
+
+                        // Payment Preferences UI selection
+                        Column {
+                            Text(
+                                "Standard payment preference",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("UPI", "CASH").forEach { method ->
+                                    val chosen = qrPreferenceSelected == method
+                                    Button(
+                                        onClick = { qrPreferenceSelected = method },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (chosen) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (chosen) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(method, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                onUpdateDetails(
+                                    customer.id,
+                                    customer.name,
+                                    phoneInput.ifBlank { null },
+                                    qrPreferenceSelected,
+                                    addressInput.ifBlank { null },
+                                    notesInput.ifBlank { null }
+                                )
+                                Toast.makeText(context, "Preferences of ${customer.name} have been updated!", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Update Account Details", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        } else {
+            // Ledger/Purchase History List tab inside customer profile
+            item {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Purchase History logs",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = PrimaryMilk
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PrimaryMilk.copy(alpha = 0.1f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${filteredProfileSales.size} Records",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = PrimaryMilk,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    
+                    // Simple segment layout control
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("All", "Paid", "Pending").forEach { filterOpt ->
+                            val isChosen = profileSalesFilter == filterOpt
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isChosen) PrimaryMilk else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    .border(1.dp, if (isChosen) PrimaryMilk else Color.LightGray.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                    .clickable { profileSalesFilter = filterOpt }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = filterOpt,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (filteredProfileSales.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color.LightGray.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Receipt, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(36.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                "No transaction records found",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(filteredProfileSales) { sale ->
+                    val dateStr = remember(sale.createdAt) {
+                        SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(sale.createdAt))
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    when (sale.milkType) {
+                                                        "Cow Milk" -> Color(0xFF64B5F6)
+                                                        "Buffalo Milk" -> Color(0xFF81C784)
+                                                        else -> Color(0xFFFFB74D)
+                                                    }
+                                                )
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${sale.liters} L • ${sale.milkType}",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = dateStr,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        "₹${sale.totalAmount.toInt()}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (sale.paymentStatus == "PAID") OrganicGreen.copy(alpha = 0.12f)
+                                                else AlertRed.copy(alpha = 0.12f)
+                                            )
+                                            .clickable {
+                                                if (sale.paymentStatus == "PENDING") {
+                                                    onSettlePayment(sale, customer.qrPreference)
+                                                    Toast.makeText(context, "Settle transaction update: Success", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (sale.paymentStatus == "PAID") "Paid" else "Collect Payment",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (sale.paymentStatus == "PAID") OrganicGreen else AlertRed,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!sale.location.isNullOrBlank() && sale.location != "Simulated Location (GPS Locked)") {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = sale.location,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }

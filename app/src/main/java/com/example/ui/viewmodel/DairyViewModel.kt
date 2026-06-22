@@ -129,6 +129,12 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.saveCustomerDetails(id, name, phone, qrPreference, address, notes)
+        }
+    }
+
     fun deleteCustomer(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteCustomer(id)
