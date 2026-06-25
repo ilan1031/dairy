@@ -947,8 +947,8 @@ fun LoginScreen(
     onNavigateRegister: () -> Unit
 ) {
     val currentLanguage = LocalAppLanguage.current
-    var email by remember { mutableStateOf("name@abielan.in") }
-    var password by remember { mutableStateOf("123456") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
     Box(
@@ -1002,7 +1002,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email Address".t(currentLanguage)) },
+                    label = { Text("name@abielan.in") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
@@ -1013,6 +1013,7 @@ fun LoginScreen(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password".t(currentLanguage)) },
+                    placeholder = { Text("123456") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
@@ -1027,33 +1028,6 @@ fun LoginScreen(
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.08f)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.15f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Sample Administrator Account".t(currentLanguage),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryMilk
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Email: name@abielan.in  •  Password: 123456",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.DarkGray
-                        )
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -1090,11 +1064,11 @@ fun RegisterScreen(
     onNavigateLogin: () -> Unit
 ) {
     val currentLanguage = LocalAppLanguage.current
-    var businessNameInput by remember { mutableStateOf("Krishna Milk Depot") }
-    var ownerNameInput by remember { mutableStateOf("Pooja Sharma") }
-    var mobileInput by remember { mutableStateOf("9911223344") }
-    var emailInput by remember { mutableStateOf("pooja@krishnadairy.com") }
-    var passwordInput by remember { mutableStateOf("123456") }
+    var businessNameInput by remember { mutableStateOf("") }
+    var ownerNameInput by remember { mutableStateOf("") }
+    var mobileInput by remember { mutableStateOf("") }
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
     var passwordInputVisible by remember { mutableStateOf(false) }
 
     Box(
@@ -1151,6 +1125,7 @@ fun RegisterScreen(
                         value = businessNameInput,
                         onValueChange = { businessNameInput = it },
                         label = { Text("Business Name".t(currentLanguage)) },
+                        placeholder = { Text("Krishna Milk Depot") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -1160,6 +1135,7 @@ fun RegisterScreen(
                         value = ownerNameInput,
                         onValueChange = { ownerNameInput = it },
                         label = { Text("Owner Full Name".t(currentLanguage)) },
+                        placeholder = { Text("Pooja Sharma") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -1169,6 +1145,7 @@ fun RegisterScreen(
                         value = mobileInput,
                         onValueChange = { mobileInput = it },
                         label = { Text("Mobile Phone Number".t(currentLanguage)) },
+                        placeholder = { Text("9911223344") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
@@ -1179,6 +1156,7 @@ fun RegisterScreen(
                         value = emailInput,
                         onValueChange = { emailInput = it },
                         label = { Text("Email Address".t(currentLanguage)) },
+                        placeholder = { Text("pooja@krishnadairy.com") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
@@ -1189,6 +1167,7 @@ fun RegisterScreen(
                         value = passwordInput,
                         onValueChange = { passwordInput = it },
                         label = { Text("Secret Password".t(currentLanguage)) },
+                        placeholder = { Text("123456") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = if (passwordInputVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
