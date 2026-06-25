@@ -482,7 +482,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         totalCollected = totalCollected,
                         totalLiters = totalLiters,
                         totalRevenue = totalRevenueCalculated,
-                        isCommunityActive = isCommunityOwnerFeatureActive
+                        isCommunityActive = isCommunityOwnerFeatureActive,
+                        businessName = businessName
                     )
                     5 -> SettingsTab(
                         businessName = businessName,
@@ -828,7 +829,7 @@ fun LoginScreen(
     onNavigateRegister: () -> Unit
 ) {
     val currentLanguage = LocalAppLanguage.current
-    var email by remember { mutableStateOf("seller@ganeshdairy.com") }
+    var email by remember { mutableStateOf("name@abielan.in") }
     var password by remember { mutableStateOf("123456") }
     var passwordVisible by remember { mutableStateOf(false) }
 
@@ -909,7 +910,34 @@ fun LoginScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = PrimaryMilk.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.15f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Sample Administrator Account".t(currentLanguage),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryMilk
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Email: name@abielan.in  •  Password: 123456",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = { onLoginSuccess(email, password) },
@@ -4601,10 +4629,43 @@ fun ReportsTab(
     totalCollected: Double,
     totalLiters: Double,
     totalRevenue: Double,
-    isCommunityActive: Boolean
+    isCommunityActive: Boolean,
+    businessName: String
 ) {
     val context = LocalContext.current
     var selectedIntervalFilter by remember { mutableStateOf("Weekly") }
+
+    val filteredSales = remember(sales, selectedIntervalFilter) {
+        val now = System.currentTimeMillis()
+        val cutoff = when (selectedIntervalFilter) {
+            "Today" -> {
+                val calendar = java.util.Calendar.getInstance()
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                calendar.set(java.util.Calendar.MILLISECOND, 0)
+                calendar.timeInMillis
+            }
+            "Weekly" -> now - (7 * 24 * 60 * 60 * 1000L)
+            "Monthly" -> now - (30 * 24 * 60 * 60 * 1000L)
+            "Yearly" -> now - (365 * 24 * 60 * 60 * 1000L)
+            else -> 0L // "Multi-Year"
+        }
+        sales.filter { it.createdAt >= cutoff }
+    }
+
+    val displayTotalPending = remember(filteredSales) {
+        filteredSales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+    }
+    val displayTotalCollected = remember(filteredSales) {
+        filteredSales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+    }
+    val displayTotalLiters = remember(filteredSales) {
+        filteredSales.sumOf { it.liters }
+    }
+    val displayTotalRevenue = remember(filteredSales) {
+        filteredSales.sumOf { it.totalAmount }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -4619,6 +4680,12 @@ fun ReportsTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
+                    Text(
+                        text = businessName.uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryMilk
+                    )
                     Text(
                         "Enterprise Reports",
                         style = MaterialTheme.typography.titleLarge,
@@ -4676,19 +4743,19 @@ fun ReportsTab(
 
         // LIVE DYNAMIC GRAPHICAL BUSINESS INSIGHTS
         item {
-            val topVolumeType = remember(sales) {
-                sales.groupBy { it.milkType }
+            val topVolumeType = remember(filteredSales) {
+                filteredSales.groupBy { it.milkType }
                     .mapValues { it.value.sumOf { s -> s.liters } }
                     .maxByOrNull { it.value }?.key ?: "Cow Milk"
             }
-            val maxOutstandingDebtorName = remember(sales) {
-                sales.filter { it.paymentStatus == "PENDING" }
+            val maxOutstandingDebtorName = remember(filteredSales) {
+                filteredSales.filter { it.paymentStatus == "PENDING" }
                     .groupBy { it.customerName }
                     .mapValues { it.value.sumOf { s -> s.totalAmount } }
                     .maxByOrNull { it.value }?.key ?: "None Selected"
             }
-            val maxOutstandingDebtorAmt = remember(sales) {
-                sales.filter { it.paymentStatus == "PENDING" }
+            val maxOutstandingDebtorAmt = remember(filteredSales) {
+                filteredSales.filter { it.paymentStatus == "PENDING" }
                     .groupBy { it.customerName }
                     .mapValues { it.value.sumOf { s -> s.totalAmount } }
                     .maxByOrNull { it.value }?.value ?: 0.0
@@ -4770,12 +4837,12 @@ fun ReportsTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "₹${totalRevenue.toInt()}",
+                            "₹${displayTotalRevenue.toInt()}",
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Black,
                             color = PrimaryMilk
                         )
-                        val collectionRate = if (totalRevenue > 0) (totalCollected / totalRevenue) else 1.0
+                        val collectionRate = if (displayTotalRevenue > 0) (displayTotalCollected / displayTotalRevenue) else 1.0
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -4794,7 +4861,7 @@ fun ReportsTab(
                     Spacer(modifier = Modifier.height(12.dp))
                     
                     // Collection Rate Indicator (Linear progress representing collection safety factor)
-                    val collectionProgress = if (totalRevenue > 0) (totalCollected / totalRevenue).toFloat().coerceIn(0f, 1f) else 1.0f
+                    val collectionProgress = if (displayTotalRevenue > 0) (displayTotalCollected / displayTotalRevenue).toFloat().coerceIn(0f, 1f) else 1.0f
                     LinearProgressIndicator(
                         progress = { collectionProgress },
                         modifier = Modifier
@@ -4854,7 +4921,7 @@ fun ReportsTab(
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "₹${totalPending.toInt()}",
+                                text = "₹${displayTotalPending.toInt()}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Black,
                                 color = AlertRed
@@ -4898,7 +4965,7 @@ fun ReportsTab(
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "${String.format("%.1f", totalLiters)} L",
+                                text = "${String.format("%.1f", displayTotalLiters)} L",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Black,
                                 color = PrimaryMilk
@@ -4947,7 +5014,7 @@ fun ReportsTab(
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "₹${totalCollected.toInt()}",
+                                text = "₹${displayTotalCollected.toInt()}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Black,
                                 color = OrganicGreen
@@ -4991,7 +5058,7 @@ fun ReportsTab(
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "₹${(totalRevenue * 0.35).toInt()}",
+                                text = "₹${(displayTotalRevenue * 0.35).toInt()}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Black,
                                 color = PrimaryGold
@@ -5659,77 +5726,6 @@ fun SettingsTab(
                         )
                     }
                     
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Demo simulation row
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                    Text(
-                        text = "Demo Verification Controls:".t(currentLanguage),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Gray
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    BoxWithConstraints {
-                        val isCompact = maxWidth < 440.dp
-                        if (isCompact) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { onResetTrial() },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryMilk),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("Reset 31-Day Trial".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = {
-                                        onSubtract31Days()
-                                        onTogglePaidStatus(false)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("Simulate Expiry".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        } else {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                OutlinedButton(
-                                    onClick = { onResetTrial() },
-                                    modifier = Modifier.weight(1f),
-                                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryMilk),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("Reset 31-Day Trial".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = {
-                                        onSubtract31Days()
-                                        onTogglePaidStatus(false)
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.5f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text("Simulate Expiry".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
                 }
             }
             
@@ -8550,13 +8546,15 @@ fun TrialExpiredScreen(
 
                 Spacer(modifier = Modifier.height(30.dp))
 
-                // Under-tray developers controls to easily reset/simulate for verification
+                // Under-tray controls removed
+                if (false)
                 Text(
                     "Demo & Testing Controls:",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.4f),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
+                if (false)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
