@@ -13,7 +13,7 @@ class PersistentCookieJar(context: Context) : CookieJar {
         val editor = sharedPrefs.edit()
         cookies.forEach { cookie ->
             if (cookie.name == "dairy_session" || cookie.name == "dairy_login" || cookie.name == "dairy_subscription") {
-                if (cookie.value.isEmpty()) {
+                if (cookie.value.isEmpty() || cookie.expiresAt <= System.currentTimeMillis()) {
                     editor.remove(cookie.name)
                 } else {
                     editor.putString(cookie.name, cookie.value)

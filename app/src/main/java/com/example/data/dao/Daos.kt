@@ -79,6 +79,9 @@ interface PriceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPriceConfig(config: PriceConfigEntity)
 
+    @Query("SELECT * FROM price_configs WHERE milkType = :milkType")
+    suspend fun getPriceConfig(milkType: String): PriceConfigEntity?
+
     @Query("SELECT * FROM price_configs WHERE isSynced = 0")
     suspend fun getUnsyncedPrices(): List<PriceConfigEntity>
 

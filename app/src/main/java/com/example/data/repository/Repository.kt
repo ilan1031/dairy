@@ -331,32 +331,38 @@ class Repository(
                     }
                 }
 
-                // 3. Price configs
-                data.priceConfigs?.forEach { price ->
-                    priceDao.insertPriceConfig(
-                        PriceConfigEntity(
-                            milkType = price.milkType,
-                            currentPrice = price.currentPrice,
-                            isSynced = true,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    )
-                }
-
-                // 4. Inventory
-                data.inventory?.forEach { inv ->
-                    milkInventoryDao.insertInventory(
-                        MilkInventoryEntity(
-                            dateStr = inv.dateStr,
-                            cowLiters = inv.cowLiters,
-                            buffaloLiters = inv.buffaloLiters,
-                            a2Liters = inv.a2Liters,
-                            customStocksRaw = inv.customStocksRaw,
-                            isSynced = true,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                    )
-                }
+                 // 3. Price configs
+                 data.priceConfigs?.forEach { price ->
+                     val local = priceDao.getPriceConfig(price.milkType)
+                     if (local == null || local.isSynced) {
+                         priceDao.insertPriceConfig(
+                             PriceConfigEntity(
+                                 milkType = price.milkType,
+                                 currentPrice = price.currentPrice,
+                                 isSynced = true,
+                                 updatedAt = System.currentTimeMillis()
+                             )
+                         )
+                     }
+                 }
+ 
+                 // 4. Inventory
+                 data.inventory?.forEach { inv ->
+                     val local = milkInventoryDao.getInventoryForDate(inv.dateStr)
+                     if (local == null || local.isSynced) {
+                         milkInventoryDao.insertInventory(
+                             MilkInventoryEntity(
+                                 dateStr = inv.dateStr,
+                                 cowLiters = inv.cowLiters,
+                                 buffaloLiters = inv.buffaloLiters,
+                                 a2Liters = inv.a2Liters,
+                                 customStocksRaw = inv.customStocksRaw,
+                                 isSynced = true,
+                                 updatedAt = System.currentTimeMillis()
+                             )
+                         )
+                     }
+                 }
                 true
             } else {
                 false
