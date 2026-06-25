@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.dao.CustomerDao
 import com.example.data.dao.PriceDao
@@ -26,7 +27,7 @@ import kotlinx.coroutines.launch
         PriceLogEntity::class,
         MilkInventoryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +40,15 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE customers ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE sales ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE price_configs ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE milk_inventory ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -46,7 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dairysync_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_5_6)
                 .addCallback(DatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

@@ -40,6 +40,7 @@ class Repository(
             buffaloLiters = buffalo,
             a2Liters = a2,
             customStocksRaw = customStocksRaw,
+            isSynced = false,
             updatedAt = System.currentTimeMillis()
         )
         milkInventoryDao.insertInventory(inventory)
@@ -70,13 +71,14 @@ class Repository(
             address = address,
             notes = notes,
             isSynced = false,
+            isDeleted = false,
             updatedAt = System.currentTimeMillis()
         )
         customerDao.insertCustomer(customer)
     }
 
     suspend fun deleteCustomer(id: String) {
-        customerDao.deleteCustomer(id)
+        customerDao.softDeleteCustomer(id, System.currentTimeMillis())
     }
 
     suspend fun insertSale(
@@ -108,7 +110,7 @@ class Repository(
     }
 
     suspend fun deleteSale(id: String) {
-        saleDao.deleteSale(id)
+        saleDao.softDeleteSale(id, System.currentTimeMillis())
     }
 
     suspend fun markSaleAsPaid(id: String, paymentType: String) {
@@ -130,6 +132,7 @@ class Repository(
                 PriceConfigEntity(
                     milkType = milkType,
                     currentPrice = newPrice,
+                    isSynced = false,
                     updatedAt = System.currentTimeMillis()
                 )
             )
@@ -171,20 +174,30 @@ class Repository(
             val unsyncedCustomers = customerDao.getUnsyncedCustomers()
             android.util.Log.d("Repository", "Syncing ${unsyncedCustomers.size} customers...")
             for (customer in unsyncedCustomers) {
-                val dto = com.example.data.network.CustomerDto(
-                    id = customer.id,
-                    name = customer.name,
-                    phone = customer.phone,
-                    qrPreference = customer.qrPreference,
-                    address = customer.address,
-                    notes = customer.notes
-                )
-                val response = apiService.saveCustomer(dto)
-                if (response.isSuccessful && response.body()?.success == true) {
-                    customerDao.markCustomerSynced(customer.id, System.currentTimeMillis())
-                    android.util.Log.d("Repository", "Customer ${customer.id} synced successfully.")
+                if (customer.isDeleted) {
+                    val response = apiService.deleteCustomer(mapOf("id" to customer.id))
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        customerDao.hardDeleteCustomer(customer.id)
+                        android.util.Log.d("Repository", "Customer ${customer.id} deleted from server & locally.")
+                    } else {
+                        android.util.Log.e("Repository", "Failed to sync customer deletion ${customer.id}")
+                    }
                 } else {
-                    android.util.Log.e("Repository", "Failed to sync customer ${customer.id}: ${response.errorBody()?.string()}")
+                    val dto = com.example.data.network.CustomerDto(
+                        id = customer.id,
+                        name = customer.name,
+                        phone = customer.phone,
+                        qrPreference = customer.qrPreference,
+                        address = customer.address,
+                        notes = customer.notes
+                    )
+                    val response = apiService.saveCustomer(dto)
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        customerDao.markCustomerSynced(customer.id, System.currentTimeMillis())
+                        android.util.Log.d("Repository", "Customer ${customer.id} synced successfully.")
+                    } else {
+                        android.util.Log.e("Repository", "Failed to sync customer ${customer.id}: ${response.errorBody()?.string()}")
+                    }
                 }
             }
 
@@ -192,24 +205,70 @@ class Repository(
             val unsyncedSales = saleDao.getUnsyncedSales()
             android.util.Log.d("Repository", "Syncing ${unsyncedSales.size} sales...")
             for (sale in unsyncedSales) {
-                val dto = com.example.data.network.SaleDto(
-                    id = sale.id,
-                    customerId = sale.customerId,
-                    customerName = sale.customerName,
-                    milkType = sale.milkType,
-                    liters = sale.liters,
-                    ratePerLiter = sale.ratePerLiter,
-                    totalAmount = sale.totalAmount,
-                    paymentStatus = sale.paymentStatus,
-                    paymentType = sale.paymentType,
-                    location = sale.location
-                )
-                val response = apiService.saveSale(dto)
-                if (response.isSuccessful && response.body()?.success == true) {
-                    saleDao.markSaleSynced(sale.id, System.currentTimeMillis())
-                    android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
+                if (sale.isDeleted) {
+                    val response = apiService.deleteSale(mapOf("id" to sale.id))
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        saleDao.hardDeleteSale(sale.id)
+                        android.util.Log.d("Repository", "Sale ${sale.id} deleted from server & locally.")
+                    } else {
+                        android.util.Log.e("Repository", "Failed to sync sale deletion ${sale.id}")
+                    }
                 } else {
-                    android.util.Log.e("Repository", "Failed to sync sale ${sale.id}: ${response.errorBody()?.string()}")
+                    val dto = com.example.data.network.SaleDto(
+                        id = sale.id,
+                        customerId = sale.customerId,
+                        customerName = sale.customerName,
+                        milkType = sale.milkType,
+                        liters = sale.liters,
+                        ratePerLiter = sale.ratePerLiter,
+                        totalAmount = sale.totalAmount,
+                        paymentStatus = sale.paymentStatus,
+                        paymentType = sale.paymentType,
+                        location = sale.location
+                    )
+                    val response = apiService.saveSale(dto)
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        saleDao.markSaleSynced(sale.id, System.currentTimeMillis())
+                        android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
+                    } else {
+                        android.util.Log.e("Repository", "Failed to sync sale ${sale.id}: ${response.errorBody()?.string()}")
+                    }
+                }
+            }
+
+            // 3. Sync prices
+            val unsyncedPrices = priceDao.getUnsyncedPrices()
+            android.util.Log.d("Repository", "Syncing ${unsyncedPrices.size} prices...")
+            for (price in unsyncedPrices) {
+                val response = apiService.savePrice(mapOf(
+                    "milkType" to price.milkType,
+                    "price" to price.currentPrice
+                ))
+                if (response.isSuccessful && response.body()?.success == true) {
+                    priceDao.markPriceSynced(price.milkType, System.currentTimeMillis())
+                    android.util.Log.d("Repository", "Price config for ${price.milkType} synced successfully.")
+                } else {
+                    android.util.Log.e("Repository", "Failed to sync price for ${price.milkType}")
+                }
+            }
+
+            // 4. Sync inventory
+            val unsyncedInventory = milkInventoryDao.getUnsyncedInventory()
+            android.util.Log.d("Repository", "Syncing ${unsyncedInventory.size} inventory logs...")
+            for (inventory in unsyncedInventory) {
+                val dto = com.example.data.network.InventoryDto(
+                    dateStr = inventory.dateStr,
+                    cowLiters = inventory.cowLiters,
+                    buffaloLiters = inventory.buffaloLiters,
+                    a2Liters = inventory.a2Liters,
+                    customStocksRaw = inventory.customStocksRaw
+                )
+                val response = apiService.saveInventory(dto)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    milkInventoryDao.markInventorySynced(inventory.dateStr, System.currentTimeMillis())
+                    android.util.Log.d("Repository", "Inventory for ${inventory.dateStr} synced successfully.")
+                } else {
+                    android.util.Log.e("Repository", "Failed to sync inventory for ${inventory.dateStr}")
                 }
             }
             true
@@ -219,48 +278,57 @@ class Repository(
         }
     }
 
-    suspend fun bootstrapDataFromServer(context: android.content.Context): Boolean {
+    suspend fun bootstrapDataFromServer(context: android.content.Context, selectedUserId: String? = null): Boolean {
         if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) return false
         val apiService = com.example.data.network.ApiClient.getApiService(context)
         return try {
-            val response = apiService.bootstrap()
+            val reqBody = if (selectedUserId != null) mapOf("selectedUserId" to selectedUserId) else emptyMap()
+            val response = apiService.bootstrap(reqBody)
             if (response.isSuccessful && response.body()?.success == true) {
                 val data = response.body()?.data ?: return false
                 
                 // 1. Customers
                 data.customers?.forEach { cust ->
-                    customerDao.insertCustomer(
-                        CustomerEntity(
-                            id = cust.id,
-                            name = cust.name,
-                            phone = cust.phone,
-                            qrPreference = cust.qrPreference,
-                            address = cust.address,
-                            notes = cust.notes,
-                            isSynced = true,
-                            updatedAt = System.currentTimeMillis()
+                    val local = customerDao.getCustomerById(cust.id)
+                    if (local == null || local.isSynced) {
+                        customerDao.insertCustomer(
+                            CustomerEntity(
+                                id = cust.id,
+                                name = cust.name,
+                                phone = cust.phone,
+                                qrPreference = cust.qrPreference,
+                                address = cust.address,
+                                notes = cust.notes,
+                                isSynced = true,
+                                isDeleted = false,
+                                updatedAt = System.currentTimeMillis()
+                            )
                         )
-                    )
+                    }
                 }
 
                 // 2. Sales
                 data.sales?.forEach { sale ->
-                    saleDao.insertSale(
-                        SaleEntity(
-                            id = sale.id,
-                            customerId = sale.customerId,
-                            customerName = sale.customerName,
-                            milkType = sale.milkType,
-                            liters = sale.liters,
-                            ratePerLiter = sale.ratePerLiter,
-                            totalAmount = sale.totalAmount,
-                            paymentStatus = sale.paymentStatus,
-                            paymentType = sale.paymentType,
-                            location = sale.location,
-                            isSynced = true,
-                            updatedAt = System.currentTimeMillis()
+                    val local = saleDao.getSaleById(sale.id)
+                    if (local == null || local.isSynced) {
+                        saleDao.insertSale(
+                            SaleEntity(
+                                id = sale.id,
+                                customerId = sale.customerId,
+                                customerName = sale.customerName,
+                                milkType = sale.milkType,
+                                liters = sale.liters,
+                                ratePerLiter = sale.ratePerLiter,
+                                totalAmount = sale.totalAmount,
+                                paymentStatus = sale.paymentStatus,
+                                paymentType = sale.paymentType,
+                                location = sale.location,
+                                isSynced = true,
+                                isDeleted = false,
+                                updatedAt = System.currentTimeMillis()
+                            )
                         )
-                    )
+                    }
                 }
 
                 // 3. Price configs
@@ -269,6 +337,7 @@ class Repository(
                         PriceConfigEntity(
                             milkType = price.milkType,
                             currentPrice = price.currentPrice,
+                            isSynced = true,
                             updatedAt = System.currentTimeMillis()
                         )
                     )
@@ -283,6 +352,7 @@ class Repository(
                             buffaloLiters = inv.buffaloLiters,
                             a2Liters = inv.a2Liters,
                             customStocksRaw = inv.customStocksRaw,
+                            isSynced = true,
                             updatedAt = System.currentTimeMillis()
                         )
                     )
@@ -301,7 +371,7 @@ class Repository(
         if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) return null
         val apiService = com.example.data.network.ApiClient.getApiService(context)
         return try {
-            val response = apiService.whoAmI()
+            val response = apiService.whoAmI(emptyMap())
             if (response.isSuccessful && response.body()?.authenticated == true) {
                 val subStatus = response.body()?.subscriptionStatus
                 if (subStatus != null) {

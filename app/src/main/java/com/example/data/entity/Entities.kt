@@ -13,6 +13,7 @@ data class CustomerEntity(
     val address: String? = null,
     val notes: String? = null,
     val isSynced: Boolean = false,
+    val isDeleted: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -30,6 +31,7 @@ data class SaleEntity(
     val location: String? = "Simulated Location (GPS Locked)",
     val createdAt: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false,
+    val isDeleted: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -37,6 +39,7 @@ data class SaleEntity(
 data class PriceConfigEntity(
     @PrimaryKey val milkType: String, // "Cow Milk", "Buffalo Milk", "A2 Milk"
     val currentPrice: Double,
+    val isSynced: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -56,5 +59,6 @@ data class MilkInventoryEntity(
     val buffaloLiters: Double,
     val a2Liters: Double,
     val customStocksRaw: String = "", // e.g. "Goat Milk:50.0,Camel Milk:30.0"
+    val isSynced: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 )

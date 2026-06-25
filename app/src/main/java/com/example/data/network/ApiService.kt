@@ -13,13 +13,13 @@ interface ApiService {
     suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
 
     @POST("auth/whoami")
-    suspend fun whoAmI(@Body request: Map<String, String> = emptyMap()): Response<WhoAmIResponse>
+    suspend fun whoAmI(@Body request: Map<String, String>): Response<WhoAmIResponse>
 
     @POST("auth/logout")
-    suspend fun logout(@Body request: Map<String, String> = emptyMap()): Response<GenericResponse>
+    suspend fun logout(@Body request: Map<String, String>): Response<GenericResponse>
 
     @POST("data/bootstrap")
-    suspend fun bootstrap(@Body request: Map<String, String> = emptyMap()): Response<BootstrapResponse>
+    suspend fun bootstrap(@Body request: Map<String, String>): Response<BootstrapResponse>
 
     @POST("data/customers/save")
     suspend fun saveCustomer(@Body request: CustomerDto): Response<CustomerSaveResponse>
