@@ -388,6 +388,11 @@ class Repository(
                         .putString("sub_plan", subStatus.plan)
                         .putInt("sub_days_left", subStatus.daysLeft)
                         .putString("sub_payment_msg", subStatus.paymentMessage)
+                        .putInt("sub_sales_limit", subStatus.salesLimit ?: -1)
+                        .putInt("sub_customer_limit", subStatus.customerLimit ?: -1)
+                        .putBoolean("sub_can_create", subStatus.canCreate ?: true)
+                        .putBoolean("sub_can_update", subStatus.canUpdate ?: true)
+                        .putBoolean("sub_can_delete", subStatus.canDelete ?: true)
                         .apply()
                 }
                 subStatus

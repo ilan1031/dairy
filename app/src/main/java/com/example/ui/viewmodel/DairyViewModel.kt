@@ -83,12 +83,32 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _subPaymentMsg = MutableStateFlow(sharedPrefs.getString("sub_payment_msg", "") ?: "")
     val subPaymentMsg: StateFlow<String> = _subPaymentMsg.asStateFlow()
 
+    private val _subSalesLimit = MutableStateFlow(sharedPrefs.getInt("sub_sales_limit", -1))
+    val subSalesLimit: StateFlow<Int> = _subSalesLimit.asStateFlow()
+
+    private val _subCustomerLimit = MutableStateFlow(sharedPrefs.getInt("sub_customer_limit", -1))
+    val subCustomerLimit: StateFlow<Int> = _subCustomerLimit.asStateFlow()
+
+    private val _subCanCreate = MutableStateFlow(sharedPrefs.getBoolean("sub_can_create", true))
+    val subCanCreate: StateFlow<Boolean> = _subCanCreate.asStateFlow()
+
+    private val _subCanUpdate = MutableStateFlow(sharedPrefs.getBoolean("sub_can_update", true))
+    val subCanUpdate: StateFlow<Boolean> = _subCanUpdate.asStateFlow()
+
+    private val _subCanDelete = MutableStateFlow(sharedPrefs.getBoolean("sub_can_delete", true))
+    val subCanDelete: StateFlow<Boolean> = _subCanDelete.asStateFlow()
+
     fun refreshSubscriptionState() {
         _isSubActive.value = sharedPrefs.getBoolean("sub_active", true)
         _isSubBlocked.value = sharedPrefs.getBoolean("sub_blocked", false)
         _subPlan.value = sharedPrefs.getString("sub_plan", "premium") ?: "premium"
         _subDaysLeft.value = sharedPrefs.getInt("sub_days_left", 365)
         _subPaymentMsg.value = sharedPrefs.getString("sub_payment_msg", "") ?: ""
+        _subSalesLimit.value = sharedPrefs.getInt("sub_sales_limit", -1)
+        _subCustomerLimit.value = sharedPrefs.getInt("sub_customer_limit", -1)
+        _subCanCreate.value = sharedPrefs.getBoolean("sub_can_create", true)
+        _subCanUpdate.value = sharedPrefs.getBoolean("sub_can_update", true)
+        _subCanDelete.value = sharedPrefs.getBoolean("sub_can_delete", true)
     }
 
     fun setLanguage(lang: String) {

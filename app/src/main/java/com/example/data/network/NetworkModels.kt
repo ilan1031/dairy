@@ -57,7 +57,12 @@ data class SubscriptionStatusDto(
     val blocked: Boolean = false,
     val plan: String = "premium",
     val daysLeft: Int = 365,
-    val paymentMessage: String = ""
+    val paymentMessage: String = "",
+    val salesLimit: Int? = null,
+    val customerLimit: Int? = null,
+    val canCreate: Boolean? = null,
+    val canUpdate: Boolean? = null,
+    val canDelete: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)

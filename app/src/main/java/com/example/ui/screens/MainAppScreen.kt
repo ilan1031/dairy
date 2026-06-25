@@ -76,6 +76,15 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val subDaysLeft by viewModel.subDaysLeft.collectAsState()
     val subPaymentMsg by viewModel.subPaymentMsg.collectAsState()
 
+    val subSalesLimit by viewModel.subSalesLimit.collectAsState()
+    val subCustomerLimit by viewModel.subCustomerLimit.collectAsState()
+    val subCanCreate by viewModel.subCanCreate.collectAsState()
+    val subCanUpdate by viewModel.subCanUpdate.collectAsState()
+    val subCanDelete by viewModel.subCanDelete.collectAsState()
+
+    var showPermissionErrorDialog by remember { mutableStateOf(false) }
+    var permissionErrorMsg by remember { mutableStateOf("") }
+
     val isBlockedBySubscription = remember(isLoggedIn, isSubActive, isSubBlocked, subDaysLeft) {
         if (isLoggedIn) {
             !isSubActive || isSubBlocked || subDaysLeft <= 0
@@ -132,6 +141,17 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     // SELLER REGISTER PROFILES
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
+
+    val currentSalesCount = sales.size
+    val currentCustomersCount = customers.size
+
+    val isSalesLimitExceeded = remember(subSalesLimit, currentSalesCount) {
+        subSalesLimit in 0..currentSalesCount
+    }
+
+    val isCustomerLimitExceeded = remember(subCustomerLimit, currentCustomersCount) {
+        subCustomerLimit in 0..currentCustomersCount
+    }
     val prices by viewModel.prices.collectAsState()
     val priceLogs by viewModel.priceLogs.collectAsState()
     val totalPending by viewModel.totalPending.collectAsState()
@@ -409,8 +429,13 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                     activeTab = 2
                                 },
                                 onSettlePayment = { sale ->
-                                    viewModel.markAsPaid(sale.id, "CASH")
-                                    Toast.makeText(context, "Setted ₹${sale.totalAmount.toInt()} Collected successfully!", Toast.LENGTH_SHORT).show()
+                                    if (!subCanUpdate) {
+                                        permissionErrorMsg = "Your system administrator has restricted update/payment settlement permissions on this account."
+                                        showPermissionErrorDialog = true
+                                    } else {
+                                        viewModel.markAsPaid(sale.id, "CASH")
+                                        Toast.makeText(context, "Settled ₹${sale.totalAmount.toInt()} Collected successfully!", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
                         }
@@ -421,22 +446,38 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         sales = sales,
                         inventories = inventories,
                         onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
-                            val status = if (pType == "PENDING") "PENDING" else "PAID"
-                            val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
-                            shouldAutoPreviewNext = true
-                            viewModel.addSale(
-                                customerId = customerId,
-                                customerName = customerName,
-                                milkType = milkType,
-                                liters = liters,
-                                ratePerLiter = finalRate,
-                                paymentStatus = status,
-                                paymentType = resolvedPaymentType
-                            )
-                            showSuccessSavedToast = true
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else if (isSalesLimitExceeded) {
+                                permissionErrorMsg = "Sales entry limit reached. Maximum limit is $subSalesLimit sales under your current subscription plan. Please contact your system administrator."
+                                showPermissionErrorDialog = true
+                            } else {
+                                val status = if (pType == "PENDING") "PENDING" else "PAID"
+                                val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
+                                shouldAutoPreviewNext = true
+                                viewModel.addSale(
+                                    customerId = customerId,
+                                    customerName = customerName,
+                                    milkType = milkType,
+                                    liters = liters,
+                                    ratePerLiter = finalRate,
+                                    paymentStatus = status,
+                                    paymentType = resolvedPaymentType
+                                )
+                                showSuccessSavedToast = true
+                            }
                         },
                         onQuickAddCustomer = { id, name, phone, pref ->
-                            viewModel.addNewCustomer(name, phone, pref, id)
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else if (isCustomerLimitExceeded) {
+                                permissionErrorMsg = "Customer registration limit reached. Maximum limit is $subCustomerLimit customers under your current subscription plan. Please contact your system administrator."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.addNewCustomer(name, phone, pref, id)
+                            }
                         }
                     )
                     2 -> CustomersTab(
@@ -446,27 +487,45 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         selectedCustomer = selectedCustomerForProfile,
                         onSelectCustomer = { selectedCustomerForProfile = it },
                         onUpdateCustomerDetails = { id, name, phone, qr, addr, notes ->
-                            viewModel.saveCustomerDetails(id, name, phone, qr, addr, notes)
+                            if (!subCanUpdate) {
+                                permissionErrorMsg = "Your system administrator has restricted update permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.saveCustomerDetails(id, name, phone, qr, addr, notes)
+                            }
                         },
                         onSettlePayment = { sale, pType ->
-                            viewModel.markAsPaid(sale.id, pType)
+                            if (!subCanUpdate) {
+                                permissionErrorMsg = "Your system administrator has restricted update/payment settlement permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.markAsPaid(sale.id, pType)
+                            }
                         },
                         onTriggerQuickAdd = { showQuickCustomerDialog = true },
                         onBackToDashboard = { activeTab = 0 },
                         onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
-                            val status = if (pType == "PENDING") "PENDING" else "PAID"
-                            val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
-                            shouldAutoPreviewNext = true
-                            viewModel.addSale(
-                                customerId = customerId,
-                                customerName = customerName,
-                                milkType = milkType,
-                                liters = liters,
-                                ratePerLiter = finalRate,
-                                paymentStatus = status,
-                                paymentType = resolvedPaymentType
-                            )
-                            showSuccessSavedToast = true
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else if (isSalesLimitExceeded) {
+                                permissionErrorMsg = "Sales entry limit reached. Maximum limit is $subSalesLimit sales under your current subscription plan. Please contact your system administrator."
+                                showPermissionErrorDialog = true
+                            } else {
+                                val status = if (pType == "PENDING") "PENDING" else "PAID"
+                                val resolvedPaymentType = if (pType == "PENDING") "NONE" else pType
+                                shouldAutoPreviewNext = true
+                                viewModel.addSale(
+                                    customerId = customerId,
+                                    customerName = customerName,
+                                    milkType = milkType,
+                                    liters = liters,
+                                    ratePerLiter = finalRate,
+                                    paymentStatus = status,
+                                    paymentType = resolvedPaymentType
+                                )
+                                showSuccessSavedToast = true
+                            }
                         },
                         businessName = businessName
                     )
@@ -502,16 +561,34 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         onLanguageToggleChange = { viewModel.setLanguage(it) },
                         onThemeToggleChange = { viewModel.setLightTheme(it) },
                         onSaveProfile = { bn, on, mn, em, pw ->
-                            viewModel.updateProfile(bn, on, mn, em, pw)
-                            Toast.makeText(context, "Business Profile Updated!", Toast.LENGTH_SHORT).show()
+                            if (!subCanUpdate) {
+                                permissionErrorMsg = "Your system administrator has restricted profile update permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.updateProfile(bn, on, mn, em, pw)
+                                Toast.makeText(context, "Business Profile Updated!", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onAddCustomer = { name, phone, qr ->
-                            viewModel.addNewCustomer(name, phone, qr)
-                            Toast.makeText(context, "Register profile setup for $name", Toast.LENGTH_SHORT).show()
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else if (isCustomerLimitExceeded) {
+                                permissionErrorMsg = "Customer registration limit reached. Maximum limit is $subCustomerLimit customers under your current subscription plan. Please contact your system administrator."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.addNewCustomer(name, phone, qr)
+                                Toast.makeText(context, "Register profile setup for $name", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onDeleteCustomer = { id ->
-                            viewModel.deleteCustomer(id)
-                            Toast.makeText(context, "Customer removed", Toast.LENGTH_SHORT).show()
+                            if (!subCanDelete) {
+                                permissionErrorMsg = "Your system administrator has restricted delete permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.deleteCustomer(id)
+                                Toast.makeText(context, "Customer removed", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onCommunityToggleChange = {
                             isCommunityOwnerFeatureActive = it
@@ -579,9 +656,17 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     QuickAddCustomerDialog(
                         onDismiss = { showQuickCustomerDialog = false },
                         onSubmit = { name, phone, pref ->
-                            viewModel.addNewCustomer(name, phone, pref)
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else if (isCustomerLimitExceeded) {
+                                permissionErrorMsg = "Customer registration limit reached. Maximum limit is $subCustomerLimit customers under your current subscription plan. Please contact your system administrator."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.addNewCustomer(name, phone, pref)
+                                Toast.makeText(context, "Registered $name!", Toast.LENGTH_SHORT).show()
+                            }
                             showQuickCustomerDialog = false
-                            Toast.makeText(context, "Registered $name!", Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
@@ -593,8 +678,47 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         businessName = businessName,
                         onDismiss = { selectedInvoiceForDetail = null },
                         onMarkAsPaid = { id, mode ->
-                            viewModel.markAsPaid(id, mode)
-                            selectedInvoiceForDetail = null
+                            if (!subCanUpdate) {
+                                permissionErrorMsg = "Your system administrator has restricted update/payment settlement permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.markAsPaid(id, mode)
+                                selectedInvoiceForDetail = null
+                            }
+                        }
+                    )
+                }
+
+                if (showPermissionErrorDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showPermissionErrorDialog = false },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Permission Restricted",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        },
+                        title = {
+                            Text(
+                                text = "Permission Restricted".t(currentLanguage),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = permissionErrorMsg.t(currentLanguage),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = { showPermissionErrorDialog = false }
+                            ) {
+                                Text("OK".t(currentLanguage))
+                            }
                         }
                     )
                 }
@@ -669,12 +793,6 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     businessName = businessName,
                     onPayNow = {
                         viewModel.setPaidStatus(true)
-                    },
-                    onResetTrial = {
-                        viewModel.updateSignupTimestamp(System.currentTimeMillis())
-                    },
-                    onSubtract31Days = {
-                        viewModel.updateSignupTimestamp(System.currentTimeMillis() - (32 * 24 * 60 * 60 * 1000L))
                     }
                 )
             }
@@ -5212,12 +5330,14 @@ fun ReportsTab(
                 val baseSeedMilk = listOf(14.0, 22.0, 18.0, 32.0, 25.5, 38.0, 42.0)
                 val baseSeedAmount = listOf(700.0, 1100.0, 900.0, 1600.0, 1300.0, 1900.0, 2100.0)
 
-                for (i in 0 until 7) {
-                    if (milkValues[i] == 0.0) {
-                        milkValues[i] = baseSeedMilk[i]
-                    }
-                    if (amountValues[i] == 0.0) {
-                        amountValues[i] = baseSeedAmount[i]
+                if (sales.isEmpty()) {
+                    for (i in 0 until 7) {
+                        if (milkValues[i] == 0.0) {
+                            milkValues[i] = baseSeedMilk[i]
+                        }
+                        if (amountValues[i] == 0.0) {
+                            amountValues[i] = baseSeedAmount[i]
+                        }
                     }
                 }
 
@@ -8431,9 +8551,7 @@ fun SubscriptionExpiredScreen(
 fun TrialExpiredScreen(
     ownerName: String,
     businessName: String,
-    onPayNow: () -> Unit,
-    onResetTrial: () -> Unit,
-    onSubtract31Days: () -> Unit
+    onPayNow: () -> Unit
 ) {
     val context = LocalContext.current
     var showPaymentLoading by remember { mutableStateOf(false) }
@@ -8544,40 +8662,7 @@ fun TrialExpiredScreen(
                     Text("Unlock Premium License • ₹1,499", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
                 }
 
-                Spacer(modifier = Modifier.height(30.dp))
 
-                // Under-tray controls removed
-                if (false)
-                Text(
-                    "Demo & Testing Controls:",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                if (false)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilledTonalButton(
-                        onClick = {
-                            onResetTrial()
-                            Toast.makeText(context, "Trial Reset Succeed: Welcome Back!", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.White.copy(alpha = 0.08f), contentColor = Color.White)
-                    ) {
-                        Text("Reset 31-Day Trial", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            onSubtract31Days()
-                            Toast.makeText(context, "Subtracted elapsed days: App is Locked", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.White.copy(alpha = 0.08f), contentColor = Color.White)
-                    ) {
-                        Text("Subtract 31 Days", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
             } else if (showPaymentLoading) {
                 // Highly realistic animated progress / simulator
                 Card(
