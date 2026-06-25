@@ -70,6 +70,20 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val signupTimestamp by viewModel.signupTimestamp.collectAsState()
     val isPaidApp by viewModel.isPaidApp.collectAsState()
 
+    val isSubActive by viewModel.isSubActive.collectAsState()
+    val isSubBlocked by viewModel.isSubBlocked.collectAsState()
+    val subPlan by viewModel.subPlan.collectAsState()
+    val subDaysLeft by viewModel.subDaysLeft.collectAsState()
+    val subPaymentMsg by viewModel.subPaymentMsg.collectAsState()
+
+    val isBlockedBySubscription = remember(isLoggedIn, isSubActive, isSubBlocked, subDaysLeft) {
+        if (isLoggedIn) {
+            !isSubActive || isSubBlocked || subDaysLeft <= 0
+        } else {
+            false
+        }
+    }
+
     val hasTrialExpired = remember(signupTimestamp, isPaidApp) {
         if (isPaidApp) {
             false
@@ -183,37 +197,50 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                 onNavigateLogin = { currentScreenState = "LOGIN" },
                 onNavigateRegister = { currentScreenState = "REGISTER" }
             )
-            "LOGIN" -> LoginScreen(
-                onLoginSuccess = { email, pwd ->
-                    if (email == emailAddress && pwd == password) {
-                        viewModel.setLoggedIn(true)
-                        currentScreenState = "ERP"
-                        Toast.makeText(context, "Welcome back, $ownerName!", Toast.LENGTH_SHORT).show()
-                    } else if (email == "seller@ganeshdairy.com" || email == "pooja@krishnadairy.com" || email == "arun@gangadairy.com") {
-                        // Automatic migration / registration for fallback mock profiles to make them persistent
-                        viewModel.updateProfile("Ganga Premium Dairy", "Arun Kumar", "9876543210", email, pwd)
-                        viewModel.setLoggedIn(true)
-                        currentScreenState = "ERP"
-                        Toast.makeText(context, "Welcome back, Arun Kumar!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // Accept and register on the fly for ease of use
-                        viewModel.updateProfile("DairySync cooperative", "Registered Seller", "9900887766", email, pwd)
-                        viewModel.setLoggedIn(true)
-                        currentScreenState = "ERP"
-                        Toast.makeText(context, "Welcome to DairySync!", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onNavigateRegister = { currentScreenState = "REGISTER" }
-            )
-            "REGISTER" -> RegisterScreen(
-                onRegisterSuccess = { bName, oName, mob, email, pwd ->
-                    viewModel.updateProfile(bName, oName, mob, email, pwd)
-                    viewModel.setLoggedIn(true)
-                    currentScreenState = "ERP"
-                    Toast.makeText(context, "Welcome to DairySync, $oName!", Toast.LENGTH_LONG).show()
-                },
-                onNavigateLogin = { currentScreenState = "LOGIN" }
-            )
+            "LOGIN" -> {
+                val scope = rememberCoroutineScope()
+                var loginInProgress by remember { mutableStateOf(false) }
+                LoginScreen(
+                    onLoginSuccess = { email, pwd ->
+                        if (!loginInProgress) {
+                            loginInProgress = true
+                            scope.launch {
+                                val error = viewModel.performLogin(email, pwd)
+                                if (error == null) {
+                                    currentScreenState = "ERP"
+                                    Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                }
+                                loginInProgress = false
+                            }
+                        }
+                    },
+                    onNavigateRegister = { currentScreenState = "REGISTER" }
+                )
+            }
+            "REGISTER" -> {
+                val scope = rememberCoroutineScope()
+                var registerInProgress by remember { mutableStateOf(false) }
+                RegisterScreen(
+                    onRegisterSuccess = { bName, oName, mob, email, pwd ->
+                        if (!registerInProgress) {
+                            registerInProgress = true
+                            scope.launch {
+                                val error = viewModel.performRegister(bName, oName, mob, email, pwd)
+                                if (error == null) {
+                                    currentScreenState = "ERP"
+                                    Toast.makeText(context, "Welcome, $oName!", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                }
+                                registerInProgress = false
+                            }
+                        }
+                    },
+                    onNavigateLogin = { currentScreenState = "LOGIN" }
+                )
+            }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -489,7 +516,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             isCommunityOwnerFeatureActive = it
                         },
                         onLogout = {
-                            viewModel.setLoggedIn(false)
+                            viewModel.performLogout()
                             currentScreenState = "SPLASH"
                             Toast.makeText(context, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                         },
@@ -618,7 +645,24 @@ fun MainAppScreen(viewModel: DairyViewModel) {
 
             }
 
-            if (hasTrialExpired) {
+            if (isBlockedBySubscription) {
+                SubscriptionExpiredScreen(
+                    ownerName = ownerName,
+                    businessName = businessName,
+                    subPlan = subPlan,
+                    subDaysLeft = subDaysLeft,
+                    subPaymentMsg = subPaymentMsg,
+                    isSyncing = isSyncing,
+                    onRefreshSubscription = {
+                        viewModel.triggerManualSync()
+                    },
+                    onLogout = {
+                        viewModel.performLogout()
+                        currentScreenState = "SPLASH"
+                        Toast.makeText(context, "Logged out successfully.", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            } else if (hasTrialExpired) {
                 TrialExpiredScreen(
                     ownerName = ownerName,
                     businessName = businessName,
@@ -3253,7 +3297,13 @@ fun BillsTab(
 
         // Apply Payment Type Filter
         if (filterPaymentType != "All") {
-            pre = pre.filter { it.paymentType == filterPaymentType }
+            pre = pre.filter {
+                if (filterPaymentType == "UPI") {
+                    it.paymentType == "UPI" || it.paymentType == "ONLINE"
+                } else {
+                    it.paymentType == filterPaymentType
+                }
+            }
         }
 
         // Apply Time Shift Filter
@@ -3279,12 +3329,18 @@ fun BillsTab(
                 matchesStart && matchesEnd
             }
         } else {
-            // Preset dates
-            val now = System.currentTimeMillis()
+            // Preset dates using precise calendar boundaries
+            val cal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val todayStart = cal.timeInMillis
             pre = when (dateFilter) {
-                "Today" -> pre.filter { now - it.createdAt < 86400000 }
-                "Week" -> pre.filter { now - it.createdAt < 86400000 * 7 }
-                "Month" -> pre.filter { now - it.createdAt < 86400000L * 30 }
+                "Today" -> pre.filter { it.createdAt >= todayStart }
+                "Week" -> pre.filter { it.createdAt >= todayStart - 6 * 86400000L }
+                "Month" -> pre.filter { it.createdAt >= todayStart - 29 * 86400000L }
                 else -> pre
             }
         }
@@ -5693,7 +5749,7 @@ fun SettingsTab(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Text(
-                            text = "Please customize your Owner Name, Business Name, and Password below to secure your cooperative datasets.",
+                            text = "Please customize your Owner Name, Department Name, and Password below to secure your departmental datasets.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
                         )
@@ -5718,7 +5774,7 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = bName,
                         onValueChange = { bName = it },
-                        label = { Text("Cooperative Business Name".t(currentLanguage)) },
+                        label = { Text("Department Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5850,7 +5906,7 @@ fun SettingsTab(
 
         // Subscriptions and Community owner dashboard feature triggers
         item {
-            Text("Cooperative System & Premium Tier", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Department System & Premium Tier", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -8220,6 +8276,158 @@ fun CustomerProfileView(
             },
             whatsAppNumber = customer.phone
         )
+    }
+}
+
+@Composable
+fun SubscriptionExpiredScreen(
+    ownerName: String,
+    businessName: String,
+    subPlan: String,
+    subDaysLeft: Int,
+    subPaymentMsg: String,
+    isSyncing: Boolean,
+    onRefreshSubscription: () -> Unit,
+    onLogout: () -> Unit
+) {
+    val context = LocalContext.current
+    val currentLanguage = LocalAppLanguage.current
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F172A))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444).copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Subscription Locked",
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Subscription Required".t(currentLanguage),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val displayMsg = if (subPaymentMsg.isNotEmpty()) {
+                subPaymentMsg
+            } else {
+                "Your subscription period has expired. Please renew or contact system administrator."
+            }
+
+            Text(
+                text = displayMsg.t(currentLanguage),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.7f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Department Name:".t(currentLanguage), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text(businessName, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Registered Owner:".t(currentLanguage), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text(ownerName, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Subscription Tier:".t(currentLanguage), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text(subPlan.uppercase(), color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Days Left:".t(currentLanguage), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text("$subDaysLeft Days".t(currentLanguage), color = if (subDaysLeft <= 0) Color(0xFFEF4444) else Color(0xFF22C55E), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 12.dp))
+
+                    Text(
+                        "Please ask your department system administrator to manage, renew, or extend your subscription plan.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (isSyncing) {
+                CircularProgressIndicator(color = PrimaryMilk)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Refreshing subscription status...".t(currentLanguage), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+            } else {
+                Button(
+                    onClick = onRefreshSubscription,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Check / Refresh Subscription".t(currentLanguage), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onLogout,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Logout")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Logout from ERP Console".t(currentLanguage), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
     }
 }
 

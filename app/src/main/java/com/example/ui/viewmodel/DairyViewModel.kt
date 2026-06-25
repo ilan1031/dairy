@@ -68,6 +68,29 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _language = MutableStateFlow(sharedPrefs.getString("language", "en") ?: "en")
     val language: StateFlow<String> = _language.asStateFlow()
 
+    private val _isSubActive = MutableStateFlow(sharedPrefs.getBoolean("sub_active", true))
+    val isSubActive: StateFlow<Boolean> = _isSubActive.asStateFlow()
+
+    private val _isSubBlocked = MutableStateFlow(sharedPrefs.getBoolean("sub_blocked", false))
+    val isSubBlocked: StateFlow<Boolean> = _isSubBlocked.asStateFlow()
+
+    private val _subPlan = MutableStateFlow(sharedPrefs.getString("sub_plan", "premium") ?: "premium")
+    val subPlan: StateFlow<String> = _subPlan.asStateFlow()
+
+    private val _subDaysLeft = MutableStateFlow(sharedPrefs.getInt("sub_days_left", 365))
+    val subDaysLeft: StateFlow<Int> = _subDaysLeft.asStateFlow()
+
+    private val _subPaymentMsg = MutableStateFlow(sharedPrefs.getString("sub_payment_msg", "") ?: "")
+    val subPaymentMsg: StateFlow<String> = _subPaymentMsg.asStateFlow()
+
+    fun refreshSubscriptionState() {
+        _isSubActive.value = sharedPrefs.getBoolean("sub_active", true)
+        _isSubBlocked.value = sharedPrefs.getBoolean("sub_blocked", false)
+        _subPlan.value = sharedPrefs.getString("sub_plan", "premium") ?: "premium"
+        _subDaysLeft.value = sharedPrefs.getInt("sub_days_left", 365)
+        _subPaymentMsg.value = sharedPrefs.getString("sub_payment_msg", "") ?: ""
+    }
+
     fun setLanguage(lang: String) {
         sharedPrefs.edit().putString("language", lang).apply()
         _language.value = lang
@@ -119,6 +142,20 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        val lastLogin = sharedPrefs.getLong("last_login_timestamp", 0L)
+        if (lastLogin != 0L && (System.currentTimeMillis() - lastLogin > 15 * 24 * 60 * 60 * 1000L)) {
+            sharedPrefs.edit()
+                .putBoolean("is_logged_in", false)
+                .putLong("last_login_timestamp", 0L)
+                .apply()
+            _isLoggedIn.value = false
+            try {
+                com.example.data.network.ApiClient.getCookieJar(application).clear()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         if (sharedPrefs.getBoolean("is_logged_in", false) && sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
             val now = System.currentTimeMillis()
             sharedPrefs.edit().putLong("signup_timestamp", now).apply()
@@ -165,18 +202,21 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     fun addNewCustomer(name: String, phone: String?, qrPreference: String, id: String = java.util.UUID.randomUUID().toString()) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.insertCustomer(id, name, phone, qrPreference)
+            triggerAutoSync()
         }
     }
 
     fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveCustomerDetails(id, name, phone, qrPreference, address, notes)
+            triggerAutoSync()
         }
     }
 
     fun deleteCustomer(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteCustomer(id)
+            triggerAutoSync()
         }
     }
 
@@ -275,7 +315,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 paymentType = paymentType,
                 location = resolvedLocation
             )
-            // Trigger automatic WorkManager sync attempt
+            // Trigger automatic real-time sync
+            triggerAutoSync()
             scheduleWorkManagerSync()
         }
     }
@@ -283,6 +324,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteSale(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteSale(id)
+            triggerAutoSync()
         }
     }
 
@@ -290,6 +332,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.markSaleAsPaid(id, paymentType)
             // Trigger background sync automatic check
+            triggerAutoSync()
             scheduleWorkManagerSync()
         }
     }
@@ -297,6 +340,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     fun updatePrice(milkType: String, newPrice: Double) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateMilkPrice(milkType, newPrice)
+            triggerAutoSync()
         }
     }
 
@@ -308,19 +352,163 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _isSyncing.value = true
             try {
-                val unsynced = repository.getUnsyncedSales()
-                if (unsynced.isNotEmpty()) {
-                    delay(2000) // Simulating network lag
-                    unsynced.forEach { sale ->
-                        repository.markSaleSynced(sale.id)
-                    }
-                } else {
-                    delay(800) // standard responsive visual feedback
-                }
+                // Perform real upload sync
+                repository.syncUnsyncedData(getApplication())
+                // Fetch dynamic subscription status
+                repository.checkSubscriptionFromServer(getApplication())
+                refreshSubscriptionState()
+                // Perform real download bootstrap sync
+                repository.bootstrapDataFromServer(getApplication())
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 _isSyncing.value = false
+            }
+        }
+    }
+
+    suspend fun performLogin(emailVal: String, passwordVal: String): String? {
+        val context = getApplication<Application>()
+        if (com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
+            val apiService = com.example.data.network.ApiClient.getApiService(context)
+            return try {
+                val response = apiService.login(com.example.data.network.LoginRequest(emailVal, passwordVal))
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val auth = response.body()!!
+                    val bName = auth.profile?.businessName ?: "Ganga Premium Dairy"
+                    val oName = auth.profile?.ownerName ?: "Arun Kumar"
+                    val mobile = auth.profile?.mobileNumber ?: "9876543210"
+                    
+                    sharedPrefs.edit()
+                        .putBoolean("is_logged_in", true)
+                        .putString("business_name", bName)
+                        .putString("owner_name", oName)
+                        .putString("mobile_number", mobile)
+                        .putString("email_address", emailVal)
+                        .putString("password", passwordVal)
+                        .putLong("last_login_timestamp", System.currentTimeMillis())
+                        .apply()
+                    
+                    _isLoggedIn.value = true
+                    _businessName.value = bName
+                    _ownerName.value = oName
+                    _mobileNumber.value = mobile
+                    _emailAddress.value = emailVal
+                    _password.value = passwordVal
+                    
+                    // Migrate pre-existing offline data first
+                    repository.syncUnsyncedData(context)
+                    
+                    // Fetch dynamic subscription status from server
+                    repository.checkSubscriptionFromServer(context)
+                    refreshSubscriptionState()
+                    
+                    // Fetch bootstrap data
+                    repository.bootstrapDataFromServer(context)
+                    
+                    null
+                } else {
+                    response.body()?.error ?: "Invalid email address or password"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                "Network error: ${e.message}"
+            }
+        } else {
+            val cachedEmail = sharedPrefs.getString("email_address", "") ?: ""
+            val cachedPassword = sharedPrefs.getString("password", "") ?: ""
+            val lastLogin = sharedPrefs.getLong("last_login_timestamp", 0L)
+            
+            return if (cachedEmail.isNotEmpty() && cachedEmail == emailVal && cachedPassword == passwordVal) {
+                if (lastLogin != 0L && (System.currentTimeMillis() - lastLogin > 15 * 24 * 60 * 60 * 1000L)) {
+                    "Your session has expired (15 days limit). Please connect to the internet to login again."
+                } else {
+                    sharedPrefs.edit().putBoolean("is_logged_in", true).apply()
+                    _isLoggedIn.value = true
+                    null
+                }
+            } else {
+                "First-time login or invalid cached credentials. Please connect to the internet."
+            }
+        }
+    }
+
+    suspend fun performRegister(bName: String, oName: String, mobile: String, em: String, pass: String): String? {
+        val context = getApplication<Application>()
+        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
+            return "Internet is required for business registration/signup."
+        }
+        val apiService = com.example.data.network.ApiClient.getApiService(context)
+        return try {
+            val response = apiService.register(com.example.data.network.RegisterRequest(bName, oName, mobile, em, pass))
+            if (response.isSuccessful && response.body()?.success == true) {
+                sharedPrefs.edit()
+                    .putBoolean("is_logged_in", true)
+                    .putString("business_name", bName)
+                    .putString("owner_name", oName)
+                    .putString("mobile_number", mobile)
+                    .putString("email_address", em)
+                    .putString("password", pass)
+                    .putLong("last_login_timestamp", System.currentTimeMillis())
+                    .apply()
+                
+                _isLoggedIn.value = true
+                _businessName.value = bName
+                _ownerName.value = oName
+                _mobileNumber.value = mobile
+                _emailAddress.value = em
+                _password.value = pass
+                
+                // Migrate pre-existing offline data first
+                repository.syncUnsyncedData(context)
+                
+                // Fetch dynamic subscription status from server
+                repository.checkSubscriptionFromServer(context)
+                refreshSubscriptionState()
+                
+                // Fetch bootstrap data
+                repository.bootstrapDataFromServer(context)
+                
+                null
+            } else {
+                response.body()?.error ?: "Failed to register business."
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "Network error during registration: ${e.message}"
+        }
+    }
+
+    fun performLogout() {
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
+                    // Try to upload any pending changes first, but don't let it block logging out
+                    try {
+                        repository.syncUnsyncedData(context)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    
+                    val apiService = com.example.data.network.ApiClient.getApiService(context)
+                    apiService.logout(emptyMap())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                sharedPrefs.edit()
+                    .putBoolean("is_logged_in", false)
+                    .putLong("last_login_timestamp", 0L)
+                    .apply()
+                _isLoggedIn.value = false
+                try {
+                    com.example.data.network.ApiClient.getCookieJar(context).clear()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                // Reset subscription StateFlows upon logout
+                refreshSubscriptionState()
             }
         }
     }
@@ -345,15 +533,23 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun triggerAutoSync() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.syncUnsyncedData(getApplication())
+        }
+    }
+
     fun saveMilkInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             repository.insertOrUpdateInventory(cow, buffalo, a2, dateStr, customStocksRaw)
+            triggerAutoSync()
         }
     }
 
     fun addNewMilkCategory(milkType: String, basePrice: Double = 50.0) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.updateMilkPrice(milkType, basePrice)
+            triggerAutoSync()
         }
     }
 }

@@ -15,34 +15,26 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        Log.d("SyncWorker", "Starting offline sync worker background task...")
+        Log.d("SyncWorker", "Starting network sync worker background task...")
         
-        // Scope for database callback
         val scope = CoroutineScope(Dispatchers.IO)
         val database = AppDatabase.getDatabase(applicationContext, scope)
-        val saleDao = database.saleDao()
+        val repository = com.example.data.repository.Repository(
+            customerDao = database.customerDao(),
+            saleDao = database.saleDao(),
+            priceDao = database.priceDao(),
+            milkInventoryDao = database.milkInventoryDao()
+        )
 
         return try {
-            val unsyncedSales = saleDao.getUnsyncedSales()
-            Log.d("SyncWorker", "Found ${unsyncedSales.size} unsynced sale records.")
-
-            if (unsyncedSales.isEmpty()) {
-                Log.d("SyncWorker", "Sync redundant, no logs outstanding.")
-                return Result.success()
+            val success = repository.syncUnsyncedData(applicationContext)
+            if (success) {
+                Log.d("SyncWorker", "Sync worker completed successfully.")
+                Result.success()
+            } else {
+                Log.d("SyncWorker", "Sync worker completed with no network or some errors.")
+                Result.retry()
             }
-
-            // Simulate server network call (e.g. FastAPI /sync endpoint)
-            // In a real application, we would map the entities to JSON and execute a POST request.
-            delay(1500) // Simulating network latency
-
-            // Now, record success in SQLite
-            val now = System.currentTimeMillis()
-            unsyncedSales.forEach { sale ->
-                saleDao.markSaleSynced(sale.id, now)
-                Log.d("SyncWorker", "Sale ${sale.id} marked as synced.")
-            }
-
-            Result.success()
         } catch (e: Exception) {
             Log.e("SyncWorker", "Sync worker failed with exception: ${e.message}", e)
             Result.retry()

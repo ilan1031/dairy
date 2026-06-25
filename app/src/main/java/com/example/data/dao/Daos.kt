@@ -16,8 +16,14 @@ interface CustomerDao {
     @Query("SELECT * FROM customers")
     suspend fun getAllCustomers(): List<CustomerEntity>
 
+    @Query("SELECT * FROM customers WHERE isSynced = 0")
+    suspend fun getUnsyncedCustomers(): List<CustomerEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomer(customer: CustomerEntity)
+
+    @Query("UPDATE customers SET isSynced = 1, updatedAt = :syncTime WHERE id = :id")
+    suspend fun markCustomerSynced(id: String, syncTime: Long)
 
     @Query("DELETE FROM customers WHERE id = :id")
     suspend fun deleteCustomer(id: String)
