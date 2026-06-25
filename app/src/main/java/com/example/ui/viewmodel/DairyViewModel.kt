@@ -56,17 +56,46 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _password = MutableStateFlow(sharedPrefs.getString("password", "123456") ?: "123456")
     val password: StateFlow<String> = _password.asStateFlow()
 
+    private val _signupTimestamp = MutableStateFlow(sharedPrefs.getLong("signup_timestamp", 0L))
+    val signupTimestamp: StateFlow<Long> = _signupTimestamp.asStateFlow()
+
+    private val _isPaidApp = MutableStateFlow(sharedPrefs.getBoolean("is_paid_app", false))
+    val isPaidApp: StateFlow<Boolean> = _isPaidApp.asStateFlow()
+
     private val _isLightTheme = MutableStateFlow(sharedPrefs.getBoolean("is_light_theme", true)) // default to light theme (true)
     val isLightTheme: StateFlow<Boolean> = _isLightTheme.asStateFlow()
+
+    private val _language = MutableStateFlow(sharedPrefs.getString("language", "en") ?: "en")
+    val language: StateFlow<String> = _language.asStateFlow()
+
+    fun setLanguage(lang: String) {
+        sharedPrefs.edit().putString("language", lang).apply()
+        _language.value = lang
+    }
 
     fun setLightTheme(enabled: Boolean) {
         sharedPrefs.edit().putBoolean("is_light_theme", enabled).apply()
         _isLightTheme.value = enabled
     }
 
+    fun updateSignupTimestamp(timestamp: Long) {
+        sharedPrefs.edit().putLong("signup_timestamp", timestamp).apply()
+        _signupTimestamp.value = timestamp
+    }
+
+    fun setPaidStatus(paid: Boolean) {
+        sharedPrefs.edit().putBoolean("is_paid_app", paid).apply()
+        _isPaidApp.value = paid
+    }
+
     fun setLoggedIn(loggedIn: Boolean) {
         sharedPrefs.edit().putBoolean("is_logged_in", loggedIn).apply()
         _isLoggedIn.value = loggedIn
+        if (loggedIn && sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
+            val now = System.currentTimeMillis()
+            sharedPrefs.edit().putLong("signup_timestamp", now).apply()
+            _signupTimestamp.value = now
+        }
     }
 
     fun updateProfile(bName: String, oName: String, mobile: String, em: String, pass: String) {
@@ -82,9 +111,19 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         _mobileNumber.value = mobile
         _emailAddress.value = em
         _password.value = pass
+        if (sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
+            val now = System.currentTimeMillis()
+            sharedPrefs.edit().putLong("signup_timestamp", now).apply()
+            _signupTimestamp.value = now
+        }
     }
 
     init {
+        if (sharedPrefs.getBoolean("is_logged_in", false) && sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
+            val now = System.currentTimeMillis()
+            sharedPrefs.edit().putLong("signup_timestamp", now).apply()
+            _signupTimestamp.value = now
+        }
         // AppDatabase initialization
         database = AppDatabase.getDatabase(application, viewModelScope)
         repository = Repository(

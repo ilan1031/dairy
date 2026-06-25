@@ -9,9 +9,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.MainAppScreen
+import com.example.ui.screens.LocalAppLanguage
 import com.example.ui.viewmodel.DairyViewModel
 
 class MainActivity : ComponentActivity() {
@@ -21,11 +23,14 @@ class MainActivity : ComponentActivity() {
     setContent {
       val viewModel: DairyViewModel = viewModel()
       val isLightTheme by viewModel.isLightTheme.collectAsState()
+      val currentLanguage by viewModel.language.collectAsState()
       MyApplicationTheme(darkTheme = !isLightTheme) {
         Surface(
           modifier = Modifier.fillMaxSize()
         ) {
-          MainAppScreen(viewModel = viewModel)
+          CompositionLocalProvider(LocalAppLanguage provides currentLanguage) {
+            MainAppScreen(viewModel = viewModel)
+          }
         }
       }
     }

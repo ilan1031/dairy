@@ -57,6 +57,7 @@ import java.util.*
 @Composable
 fun MainAppScreen(viewModel: DairyViewModel) {
     val context = LocalContext.current
+    val currentLanguage = LocalAppLanguage.current
 
     // AUTH STATE PERSISTED FROM VIEWMODEL
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
@@ -65,6 +66,45 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val mobileNumber by viewModel.mobileNumber.collectAsState()
     val emailAddress by viewModel.emailAddress.collectAsState()
     val password by viewModel.password.collectAsState()
+
+    val signupTimestamp by viewModel.signupTimestamp.collectAsState()
+    val isPaidApp by viewModel.isPaidApp.collectAsState()
+
+    val hasTrialExpired = remember(signupTimestamp, isPaidApp) {
+        if (isPaidApp) {
+            false
+        } else if (signupTimestamp == 0L) {
+            false
+        } else {
+            val diffMs = System.currentTimeMillis() - signupTimestamp
+            val diffDays = diffMs / (1000 * 60 * 60 * 24L)
+            diffDays >= 31
+        }
+    }
+
+    val trialDaysRemaining = remember(signupTimestamp) {
+        if (signupTimestamp == 0L) {
+            31L
+        } else {
+            val diffMs = System.currentTimeMillis() - signupTimestamp
+            val diffDays = diffMs / (1000 * 60 * 60 * 24L)
+            (31L - diffDays).coerceAtLeast(0L)
+        }
+    }
+
+    val isSampleAccount = remember(emailAddress, password, ownerName) {
+        (emailAddress == "arun@gangadairy.com" && password == "123456") || 
+        (emailAddress == "arun@gangadairy.com" && password == "123456") ||
+        (ownerName == "Arun Kumar" && password == "123456")
+    }
+
+    var showSampleAccountWarningDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoggedIn, isSampleAccount) {
+        if (isLoggedIn && isSampleAccount) {
+            showSampleAccountWarningDialog = true
+        }
+    }
 
     var currentScreenState by rememberSaveable { 
         mutableStateOf(if (viewModel.isLoggedIn.value) "ERP" else "SPLASH") 
@@ -176,7 +216,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
             )
         }
     } else {
-        Scaffold(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
             topBar = {
                 TopAppBar(
                     title = {
@@ -188,7 +229,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "ERP Vendor Console",
+                                text = "ERP Vendor Console".t(currentLanguage),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Gray
                             )
@@ -214,7 +255,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                 .clickable {
                                     viewModel.triggerManualSync()
                                     Toast
-                                        .makeText(context, "Triggering instant ERP sync...", Toast.LENGTH_SHORT)
+                                        .makeText(context, "Triggering instant ERP sync...".t(currentLanguage), Toast.LENGTH_SHORT)
                                         .show()
                                 }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -229,7 +270,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (isSyncing) "Syncing" else "🟢 Synced",
+                                    text = if (isSyncing) "Syncing".t(currentLanguage) else "🟢 Synced".t(currentLanguage),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSyncing) PrimaryGold else OrganicGreen
@@ -260,7 +301,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             selected = activeTab == item.tabIndex || (item.tabIndex == 5 && activeTab == 6),
                             onClick = { activeTab = item.tabIndex },
                             icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = { Text(item.label.t(currentLanguage), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = PrimaryMilk,
                                 selectedTextColor = PrimaryMilk,
@@ -280,33 +321,73 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     .fillMaxSize()
             ) {
                 when (activeTab) {
-                    0 -> DashboardTab(
-                        ownerName = ownerName,
-                        sales = sales,
-                        customers = customers,
-                        totalPending = totalPending,
-                        totalCollected = totalCollected,
-                        totalLiters = totalLiters,
-                        onQuickAction = { actionType ->
-                            when (actionType) {
-                                "NEW_SALE" -> activeTab = 1
-                                "ADD_CUSTOMER" -> showQuickCustomerDialog = true
-                                "COLLECT_PAYMENT" -> activeTab = 3
-                                "GENERATE_REPORT" -> activeTab = 4
+                    0 -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            if (isSampleAccount) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .clickable { activeTab = 5 }, // Settings tab index
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = "Security Warning",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "Default Credentials Active",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                            Text(
+                                                text = "Tap here to change name/password in Settings to secure your ERP logs info.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        },
-                        onNavigateToCustomerProfile = { customer ->
-                            selectedCustomerForProfile = customer
-                            activeTab = 2
-                        },
-                        onNavigateToProfiles = {
-                            activeTab = 2
-                        },
-                        onSettlePayment = { sale ->
-                            viewModel.markAsPaid(sale.id, "CASH")
-                            Toast.makeText(context, "Setted ₹${sale.totalAmount.toInt()} Collected successfully!", Toast.LENGTH_SHORT).show()
+                            DashboardTab(
+                                ownerName = ownerName,
+                                sales = sales,
+                                customers = customers,
+                                totalPending = totalPending,
+                                totalCollected = totalCollected,
+                                totalLiters = totalLiters,
+                                onQuickAction = { actionType ->
+                                    when (actionType) {
+                                        "NEW_SALE" -> activeTab = 1
+                                        "ADD_CUSTOMER" -> showQuickCustomerDialog = true
+                                        "COLLECT_PAYMENT" -> activeTab = 3
+                                        "GENERATE_REPORT" -> activeTab = 4
+                                    }
+                                },
+                                onNavigateToCustomerProfile = { customer ->
+                                    selectedCustomerForProfile = customer
+                                    activeTab = 2
+                                },
+                                onNavigateToProfiles = {
+                                    activeTab = 2
+                                },
+                                onSettlePayment = { sale ->
+                                    viewModel.markAsPaid(sale.id, "CASH")
+                                    Toast.makeText(context, "Setted ₹${sale.totalAmount.toInt()} Collected successfully!", Toast.LENGTH_SHORT).show()
+                                }
+                            )
                         }
-                    )
+                    }
                     1 -> SalesTab(
                         customers = customers,
                         prices = prices,
@@ -387,6 +468,10 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         customers = customers,
                         isCommunityFeatureEnabled = isCommunityOwnerFeatureActive,
                         isLightTheme = isLightTheme,
+                        isPaidApp = isPaidApp,
+                        trialDaysRemaining = trialDaysRemaining,
+                        currentLanguage = currentLanguage,
+                        onLanguageToggleChange = { viewModel.setLanguage(it) },
                         onThemeToggleChange = { viewModel.setLightTheme(it) },
                         onSaveProfile = { bn, on, mn, em, pw ->
                             viewModel.updateProfile(bn, on, mn, em, pw)
@@ -408,7 +493,10 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             currentScreenState = "SPLASH"
                             Toast.makeText(context, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                         },
-                        onNavigateToInventory = { activeTab = 6 }
+                        onNavigateToInventory = { activeTab = 6 },
+                        onTogglePaidStatus = { viewModel.setPaidStatus(it) },
+                        onResetTrial = { viewModel.updateSignupTimestamp(System.currentTimeMillis()) },
+                        onSubtract31Days = { viewModel.updateSignupTimestamp(System.currentTimeMillis() - (32 * 24 * 60 * 60 * 1000L)) }
                     )
                     6 -> InventoryTab(
                         prices = prices,
@@ -483,10 +571,71 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                     )
                 }
 
+                if (showSampleAccountWarningDialog && isSampleAccount) {
+                    AlertDialog(
+                        onDismissRequest = { showSampleAccountWarningDialog = false },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Security Alert",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Change Account Details".t(currentLanguage),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        },
+                        text = {
+                            Text(
+                                text = "You have logged in with the sample account details.\n\nTo continue using DairySync securely and protect your database logs, please change your business name, owner name, and password in settings screen immediately.".t(currentLanguage),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showSampleAccountWarningDialog = false
+                                    activeTab = 5 // Settings tab
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk)
+                            ) {
+                                Text("Go to Settings".t(currentLanguage))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showSampleAccountWarningDialog = false }) {
+                                Text("Remind Me Later".t(currentLanguage), color = Color.Gray)
+                            }
+                        }
+                    )
+                }
 
+
+            }
+
+            if (hasTrialExpired) {
+                TrialExpiredScreen(
+                    ownerName = ownerName,
+                    businessName = businessName,
+                    onPayNow = {
+                        viewModel.setPaidStatus(true)
+                    },
+                    onResetTrial = {
+                        viewModel.updateSignupTimestamp(System.currentTimeMillis())
+                    },
+                    onSubtract31Days = {
+                        viewModel.updateSignupTimestamp(System.currentTimeMillis() - (32 * 24 * 60 * 60 * 1000L))
+                    }
+                )
             }
         }
     }
+}
 }
 
 data class NavigationBarItemInfo(
@@ -500,6 +649,7 @@ fun AbielanBrandingFooter(
     textColor: Color = Color.Gray,
     modifier: Modifier = Modifier
 ) {
+    val currentLanguage = LocalAppLanguage.current
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -519,12 +669,12 @@ fun AbielanBrandingFooter(
             horizontalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Powered by ",
+                text = "Powered by".t(currentLanguage) + " ",
                 style = MaterialTheme.typography.labelMedium,
                 color = textColor.copy(alpha = 0.75f)
             )
             Text(
-                text = "abielan Tech.",
+                text = "abielan Tech.".t(currentLanguage),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = textColor,
@@ -532,7 +682,7 @@ fun AbielanBrandingFooter(
             )
         }
         Text(
-            text = "www.abielan.in",
+            text = "www.abielan.in".t(currentLanguage),
             style = MaterialTheme.typography.labelSmall,
             color = textColor.copy(alpha = 0.6f)
         )
@@ -547,6 +697,7 @@ fun SplashScreen(
     onNavigateLogin: () -> Unit,
     onNavigateRegister: () -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -579,14 +730,14 @@ fun SplashScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "Dairy ERP",
+                text = "Dairy ERP".t(currentLanguage),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Manage Milk Sales Anywhere Offline First",
+                text = "Manage Milk Sales Anywhere Offline First".t(currentLanguage),
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center
@@ -601,7 +752,7 @@ fun SplashScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0D47A1)),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text("Login", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Login".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -615,7 +766,7 @@ fun SplashScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
             ) {
-                Text("Register Business", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Register Business".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -632,6 +783,7 @@ fun LoginScreen(
     onLoginSuccess: (String, String) -> Unit,
     onNavigateRegister: () -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     var email by remember { mutableStateOf("seller@ganeshdairy.com") }
     var password by remember { mutableStateOf("123456") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -671,13 +823,13 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "Back to Ledger",
+                    text = "Back to Ledger".t(currentLanguage),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF0D47A1)
                 )
                 Text(
-                    text = "Enter login credentials provided",
+                    text = "Enter login credentials provided".t(currentLanguage),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray,
                     textAlign = TextAlign.Center
@@ -687,7 +839,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email Address") },
+                    label = { Text("Email Address".t(currentLanguage)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
@@ -697,7 +849,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text("Password".t(currentLanguage)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
@@ -723,13 +875,13 @@ fun LoginScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Sign In", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Sign In".t(currentLanguage), fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 TextButton(onClick = onNavigateRegister) {
-                    Text("New Seller? Register Business Instead", color = PrimaryMilk, fontWeight = FontWeight.SemiBold)
+                    Text("New Seller? Register Business Instead".t(currentLanguage), color = PrimaryMilk, fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -747,6 +899,7 @@ fun RegisterScreen(
     onRegisterSuccess: (String, String, String, String, String) -> Unit,
     onNavigateLogin: () -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     var businessNameInput by remember { mutableStateOf("Krishna Milk Depot") }
     var ownerNameInput by remember { mutableStateOf("Pooja Sharma") }
     var mobileInput by remember { mutableStateOf("9911223344") }
@@ -789,13 +942,13 @@ fun RegisterScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Register ERP Account",
+                        text = "Register ERP Account".t(currentLanguage),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0D47A1)
                     )
                     Text(
-                        text = "Create seller profile to work completely offline",
+                        text = "Create seller profile to work completely offline".t(currentLanguage),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray,
                         textAlign = TextAlign.Center
@@ -807,7 +960,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = businessNameInput,
                         onValueChange = { businessNameInput = it },
-                        label = { Text("Business Name") },
+                        label = { Text("Business Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -816,7 +969,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = ownerNameInput,
                         onValueChange = { ownerNameInput = it },
-                        label = { Text("Owner Full Name") },
+                        label = { Text("Owner Full Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -825,7 +978,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = mobileInput,
                         onValueChange = { mobileInput = it },
-                        label = { Text("Mobile Phone Number") },
+                        label = { Text("Mobile Phone Number".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
@@ -835,7 +988,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = emailInput,
                         onValueChange = { emailInput = it },
-                        label = { Text("Email Address") },
+                        label = { Text("Email Address".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
@@ -845,7 +998,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = passwordInput,
                         onValueChange = { passwordInput = it },
-                        label = { Text("Secret Password") },
+                        label = { Text("Secret Password".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = if (passwordInputVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
@@ -876,13 +1029,13 @@ fun RegisterScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Create Account & Enter", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Create Account & Enter".t(currentLanguage), fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
 
                 item {
                     TextButton(onClick = onNavigateLogin) {
-                        Text("Already registered? Login", color = PrimaryMilk, fontWeight = FontWeight.SemiBold)
+                        Text("Already registered? Login".t(currentLanguage), color = PrimaryMilk, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -906,6 +1059,7 @@ fun DashboardTab(
     onNavigateToProfiles: () -> Unit = {},
     onSettlePayment: (SaleEntity) -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     val context = LocalContext.current
     val greetingStr = remember {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -967,7 +1121,7 @@ fun DashboardTab(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = greetingStr,
+                                text = greetingStr.t(currentLanguage),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = Color.White.copy(alpha = 0.85f),
                                 fontWeight = FontWeight.Bold
@@ -1036,13 +1190,13 @@ fun DashboardTab(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Critical Customer Debt Alert",
+                                "Critical Customer Debt Alert".t(currentLanguage),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                "${oldPendingInvoices.size} milk runs outstanding for over 7 days. Please check customer profiles to settle.",
+                                "%s milk runs outstanding for over 7 days. Please check customer profiles to settle.".t(currentLanguage, oldPendingInvoices.size),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.9f)
                             )
@@ -1083,7 +1237,7 @@ fun DashboardTab(
                                 }
                             }
                             Spacer(modifier = Modifier.height(14.dp))
-                            Text("Today's Revenue", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Text("Today's Revenue".t(currentLanguage), style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${sales.sumOf { it.totalAmount }.toInt()}",
@@ -1117,7 +1271,7 @@ fun DashboardTab(
                                 }
                             }
                             Spacer(modifier = Modifier.height(14.dp))
-                            Text("Total Outflow", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Text("Total Outflow".t(currentLanguage), style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "${String.format("%.1f", totalLiters)} L",
@@ -1156,7 +1310,7 @@ fun DashboardTab(
                                 }
                             }
                             Spacer(modifier = Modifier.height(14.dp))
-                            Text("Total Unpaid", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Text("Total Pending".t(currentLanguage), style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${totalPending.toInt()}",
@@ -1191,7 +1345,7 @@ fun DashboardTab(
                                 }
                             }
                             Spacer(modifier = Modifier.height(14.dp))
-                            Text("Total Collected", style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
+                            Text("Total Collected".t(currentLanguage), style = MaterialTheme.typography.labelSmall, color = Color.Gray, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 "₹${totalCollected.toInt()}",
@@ -1207,7 +1361,7 @@ fun DashboardTab(
 
         // QUICK ACTION BUTTONS
         item {
-            Text("Quick ERP Actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Quick ERP Actions".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             BoxWithConstraints {
                 val isSmallScreen = maxWidth < 440.dp
@@ -1298,12 +1452,12 @@ fun DashboardTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Today's Ledger",
+                    text = "Today's Ledger".t(currentLanguage),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Total Entries: ${sales.size}",
+                    text = "Total Entries: %s".t(currentLanguage, sales.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
@@ -1324,7 +1478,7 @@ fun DashboardTab(
                         Icon(Icons.Default.RemoveShoppingCart, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(42.dp))
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            "No sales recorded today.",
+                            "No sales recorded today.".t(currentLanguage),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.Gray,
                             fontWeight = FontWeight.Bold
@@ -1447,6 +1601,7 @@ fun QuickActionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     Card(
         onClick = onClick,
         modifier = modifier.height(96.dp),
@@ -1467,10 +1622,10 @@ fun QuickActionButton(
                     .background(color.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(20.dp))
+                Icon(icon, contentDescription = label.t(currentLanguage), tint = color, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(label.t(currentLanguage), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
@@ -1487,6 +1642,7 @@ fun SalesTab(
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
     onQuickAddCustomer: (String, String, String, String) -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     val context = LocalContext.current
     var inputQuery by remember { mutableStateOf("") }
     var selectedCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
@@ -1616,14 +1772,14 @@ fun SalesTab(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = "New Billing Entry",
+                            text = "New Billing Entry".t(currentLanguage),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Black,
                             color = PrimaryMilk
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Record dynamic sales, configure volumes, map dues",
+                            text = "Record dynamic sales, configure volumes, map dues".t(currentLanguage),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.Gray
                         )
@@ -1656,7 +1812,7 @@ fun SalesTab(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "Client Account Linking",
+                        "Client Account Linking".t(currentLanguage),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold
                     )
@@ -1892,7 +2048,7 @@ fun SalesTab(
                                 }
                                 isDropdownExpanded = false
                             },
-                            label = { Text("Auto-Customer (${nextAutoCustomerName.take(10)}...)") },
+                            label = { Text("Auto-Customer (%s...)".t(currentLanguage, nextAutoCustomerName.take(10))) },
                             leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(14.dp)) },
                             colors = AssistChipDefaults.assistChipColors(
                                 labelColor = PrimaryGold,
@@ -1904,7 +2060,7 @@ fun SalesTab(
                         // Register New profile toggle
                         AssistChip(
                             onClick = { showDirectRegisterPanel = !showDirectRegisterPanel },
-                            label = { Text("New Client Roll") },
+                            label = { Text("New Client Roll".t(currentLanguage)) },
                             leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(14.dp)) },
                             colors = AssistChipDefaults.assistChipColors(
                                 labelColor = PrimaryMilk,
@@ -1947,13 +2103,13 @@ fun SalesTab(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.LibraryAdd, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Immediate Client Sign-Up", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Immediate Client Sign-Up".t(currentLanguage), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                 }
                                 
                                 OutlinedTextField(
                                     value = directRegName,
                                     onValueChange = { directRegName = it },
-                                    label = { Text("Business or Customer Name") },
+                                    label = { Text("Business or Customer Name".t(currentLanguage)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
                                     shape = RoundedCornerShape(10.dp)
@@ -1961,7 +2117,7 @@ fun SalesTab(
                                 OutlinedTextField(
                                     value = directRegPhone,
                                     onValueChange = { directRegPhone = it },
-                                    label = { Text("Logistics Phone (Optional)") },
+                                    label = { Text("Logistics Phone (Optional)".t(currentLanguage)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -2000,7 +2156,7 @@ fun SalesTab(
                                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("Register & Use")
+                                        Text("Register & Use".t(currentLanguage))
                                     }
                                 }
                             }
@@ -2152,7 +2308,7 @@ fun SalesTab(
                     OutlinedTextField(
                         value = customPriceInput,
                         onValueChange = { customPriceInput = it },
-                        label = { Text("Apply Custom Rate (₹ per Liter)") },
+                        label = { Text("Apply Custom Rate (₹ per Liter)".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         shape = RoundedCornerShape(12.dp),
@@ -3055,6 +3211,7 @@ fun BillsTab(
     onDateFilterChange: (String) -> Unit,
     onInvoiceClick: (SaleEntity) -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
     
     var showFilterDialog by remember { mutableStateOf(false) }
@@ -3422,7 +3579,7 @@ fun BillsTab(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search by buyer name...") },
+                            placeholder = { Text("Search by buyer name...".t(currentLanguage)) },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -3771,7 +3928,7 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
         stream.close()
         pdfDocument.close()
 
-        val providerAuth = "${context.packageName}.provider"
+        val providerAuth = "${com.example.BuildConfig.APPLICATION_ID}.provider"
         val pdfUri = androidx.core.content.FileProvider.getUriForFile(
             context,
             providerAuth,
@@ -5315,13 +5472,20 @@ fun SettingsTab(
     customers: List<CustomerEntity>,
     isCommunityFeatureEnabled: Boolean,
     isLightTheme: Boolean,
+    isPaidApp: Boolean,
+    trialDaysRemaining: Long,
+    currentLanguage: String,
+    onLanguageToggleChange: (String) -> Unit,
     onThemeToggleChange: (Boolean) -> Unit,
     onSaveProfile: (String, String, String, String, String) -> Unit,
     onAddCustomer: (String, String, String) -> Unit,
     onDeleteCustomer: (String) -> Unit,
     onCommunityToggleChange: (Boolean) -> Unit,
     onLogout: () -> Unit,
-    onNavigateToInventory: () -> Unit
+    onNavigateToInventory: () -> Unit,
+    onTogglePaidStatus: (Boolean) -> Unit,
+    onResetTrial: () -> Unit,
+    onSubtract31Days: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -5344,19 +5508,217 @@ fun SettingsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 0. Free Trial & License Management Section
+        item {
+            val isSample = remember(ownerName, password, email) {
+                (ownerName == "Arun Kumar" && password == "123456") || 
+                (email == "arun@gangadairy.com" && password == "123456")
+            }
+            
+            Text("License & System Integrity".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isPaidApp) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                    } else if (trialDaysRemaining <= 0) {
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                    }
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(
+                    1.dp,
+                    if (isPaidApp) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                    else if (trialDaysRemaining <= 0) MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+                    else MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isPaidApp) Icons.Default.CheckCircle else Icons.Default.Info,
+                                contentDescription = null,
+                                tint = if (isPaidApp) OrganicGreen else if (trialDaysRemaining <= 0) AlertRed else PrimaryMilk,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "License Status".t(currentLanguage),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        // Badge-like display
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isPaidApp) OrganicGreen.copy(alpha = 0.15f)
+                                    else if (trialDaysRemaining <= 0) AlertRed.copy(alpha = 0.15f)
+                                    else PrimaryMilk.copy(alpha = 0.15f)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = (if (isPaidApp) "PREMIUM LIFETIME" else if (trialDaysRemaining <= 0) "TRIAL EXPIRED" else "FREE TRIAL MODE").t(currentLanguage),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                color = if (isPaidApp) OrganicGreen else if (trialDaysRemaining <= 0) AlertRed else PrimaryMilk
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    if (!isPaidApp) {
+                        Text(
+                            text = "Remaining Days: %s days left (from total 31-day trial limit). All capabilities will auto lock after 31 days unless activated.".t(currentLanguage, trialDaysRemaining),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { onTogglePaidStatus(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(imageVector = Icons.Default.CreditCard, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Upgrade to Lifetime License (₹1,499)".t(currentLanguage), fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Text(
+                            text = "Your application is fully licensed for life! This offline terminal database is unlocked, protected, and secure.".t(currentLanguage),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Demo simulation row
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                    Text(
+                        text = "Demo Verification Controls:".t(currentLanguage),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    BoxWithConstraints {
+                        val isCompact = maxWidth < 440.dp
+                        if (isCompact) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onResetTrial() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.5f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryMilk),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Reset 31-Day Trial".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                OutlinedButton(
+                                    onClick = {
+                                        onSubtract31Days()
+                                        onTogglePaidStatus(false)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.5f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Simulate Expiry".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onResetTrial() },
+                                    modifier = Modifier.weight(1f),
+                                    border = BorderStroke(1.dp, PrimaryMilk.copy(alpha = 0.5f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryMilk),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Reset 31-Day Trial".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                OutlinedButton(
+                                    onClick = {
+                                        onSubtract31Days()
+                                        onTogglePaidStatus(false)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.5f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Simulate Expiry".t(currentLanguage), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (isSample) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "⚠️ Security Warning: Default Credentials Active",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            text = "Please customize your Owner Name, Business Name, and Password below to secure your cooperative datasets.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+            }
+        }
+
         // Business Profile information editors
         item {
-            Text("Business ERP Profile Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            val isSample = remember(ownerName, password, email) {
+                (ownerName == "Arun Kumar" && password == "123456") || 
+                (email == "arun@gangadairy.com" && password == "123456")
+            }
+            Text("Business ERP Profile Settings".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(6.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                border = BorderStroke(if (isSample) 1.5.dp else 1.dp, if (isSample) MaterialTheme.colorScheme.error else Color.LightGray.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     OutlinedTextField(
                         value = bName,
                         onValueChange = { bName = it },
-                        label = { Text("Cooperative Business Name") },
+                        label = { Text("Cooperative Business Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5364,7 +5726,7 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = oName,
                         onValueChange = { oName = it },
-                        label = { Text("Owner Full Name") },
+                        label = { Text("Owner Full Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5372,7 +5734,7 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = mPhone,
                         onValueChange = { mPhone = it },
-                        label = { Text("Logistics Phone Contact") },
+                        label = { Text("Logistics Phone Contact".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5380,7 +5742,7 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = mEmail,
                         onValueChange = { mEmail = it },
-                        label = { Text("Primary Email Address") },
+                        label = { Text("Primary Email Address".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5388,7 +5750,7 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = mPass,
                         onValueChange = { mPass = it },
-                        label = { Text("ERP Security Password") },
+                        label = { Text("ERP Security Password".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = if (passVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
@@ -5410,27 +5772,27 @@ fun SettingsTab(
                         modifier = Modifier.align(Alignment.End),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Update Profile")
+                        Text("Update Profile".t(currentLanguage))
                     }
                 }
             }
         }
 
-        // Customer profiles manager section
+        // Customer profiles manager section (Add customer from settings alone - list removed)
         item {
-            Text("Register Customer Profile Ledger", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Register Customer Profile Ledger".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Add dairy sync profile", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text("Add dairy sync profile".t(currentLanguage), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = registerName,
                         onValueChange = { registerName = it },
-                        label = { Text("Customer/Retail Outlet Name") },
+                        label = { Text("Customer/Retail Outlet Name".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -5438,14 +5800,14 @@ fun SettingsTab(
                     OutlinedTextField(
                         value = registerPhone,
                         onValueChange = { registerPhone = it },
-                        label = { Text("Phone Number") },
+                        label = { Text("Phone Number".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Preferred QR Sync method:", style = MaterialTheme.typography.labelSmall)
+                    Text("Preferred QR Sync method:".t(currentLanguage), style = MaterialTheme.typography.labelSmall)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -5480,36 +5842,7 @@ fun SettingsTab(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Add New Customer")
-                    }
-                }
-            }
-        }
-
-        // Registered user accounts profiles list inline
-        item {
-            Text("Registered buyers list: ${customers.size}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        }
-
-        items(customers) { buyer ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.4f))
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(buyer.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                        buyer.phone?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        }
-                    }
-
-                    IconButton(onClick = { onDeleteCustomer(buyer.id) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Remove Customer", tint = AlertRed)
+                        Text("Add New Customer".t(currentLanguage))
                     }
                 }
             }
@@ -5544,7 +5877,7 @@ fun SettingsTab(
 
         // Theme Settings (Dark Theme vs Light Theme Toggle)
         item {
-            Text("Interface Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Interface Appearance".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -5557,13 +5890,104 @@ fun SettingsTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Enable Light Theme", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Text("Switch between White Theme (Light) and Dark Theme (Midnight)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("Enable Light Theme".t(currentLanguage), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            Text("Switch between White Theme (Light) and Dark Theme (Midnight)".t(currentLanguage), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                         Switch(
                             checked = isLightTheme,
                             onCheckedChange = { onThemeToggleChange(it) }
                         )
+                    }
+                }
+            }
+        }
+
+        // Language settings item
+        item {
+            Text("Language Selection".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    BoxWithConstraints {
+                        val isCompact = maxWidth < 480.dp
+                        if (isCompact) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text("Language / மொழி", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Switch between English and Tamil".t(currentLanguage), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    listOf("en" to "English", "ta" to "தமிழ்").forEach { (code, label) ->
+                                        val active = currentLanguage == code
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (active) PrimaryMilk else Color.Transparent)
+                                                .clickable { onLanguageToggleChange(code) }
+                                                .padding(vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Language / மொழி", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Switch between English and Tamil".t(currentLanguage), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    listOf("en" to "English", "ta" to "தமிழ்").forEach { (code, label) ->
+                                        val active = currentLanguage == code
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (active) PrimaryMilk else Color.Transparent)
+                                                .clickable { onLanguageToggleChange(code) }
+                                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -5634,7 +6058,7 @@ fun SettingsTab(
                 ) {
                     Icon(Icons.Default.Backup, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Local Backup")
+                    Text("Local Backup".t(currentLanguage))
                 }
 
                 Button(
@@ -5647,7 +6071,7 @@ fun SettingsTab(
                 ) {
                     Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Cloud Restore")
+                    Text("Cloud Restore".t(currentLanguage))
                 }
             }
         }
@@ -5683,6 +6107,7 @@ fun QuickAddCustomerDialog(
     onDismiss: () -> Unit,
     onSubmit: (String, String, String) -> Unit
 ) {
+    val currentLanguage = LocalAppLanguage.current
     var nameInput by remember { mutableStateOf("") }
     var phoneInput by remember { mutableStateOf("") }
     var qrPreference by remember { mutableStateOf("UPI") }
@@ -5711,7 +6136,7 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = nameInput,
                     onValueChange = { nameInput = it },
-                    label = { Text("Buyer Name (e.g., Arun Sharma)") },
+                    label = { Text("Buyer Name (e.g., Arun Sharma)".t(currentLanguage)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -5720,7 +6145,7 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = phoneInput,
                     onValueChange = { phoneInput = it },
-                    label = { Text("Logistics Phone Number") },
+                    label = { Text("Logistics Phone Number".t(currentLanguage)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
@@ -5763,7 +6188,7 @@ fun QuickAddCustomerDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk)
                     ) {
-                        Text("Register Profile")
+                        Text("Register Profile".t(currentLanguage))
                     }
                 }
             }
@@ -5784,6 +6209,7 @@ fun InventoryTab(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val currentLanguage = LocalAppLanguage.current
     val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()) }
     var dateStringInput by remember { mutableStateOf(sdf.format(java.util.Date())) }
     val dateFormat = remember { java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault()) }
@@ -6015,7 +6441,7 @@ fun InventoryTab(
                     OutlinedTextField(
                         value = editPriceInput,
                         onValueChange = { editPriceInput = it },
-                        label = { Text("Base Price (₹/L)") },
+                        label = { Text("Base Price (₹/L)".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -6074,7 +6500,7 @@ fun InventoryTab(
                     OutlinedTextField(
                         value = dateStringInput,
                         onValueChange = { dateStringInput = it },
-                        label = { Text("Log Date (YYYY-MM-DD)") },
+                        label = { Text("Log Date (YYYY-MM-DD)".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         leadingIcon = {
@@ -6128,8 +6554,8 @@ fun InventoryTab(
                                 OutlinedTextField(
                                     value = currentVal,
                                     onValueChange = { stockInputs[type] = it },
-                                    label = { Text("Stock (L)") },
-                                    placeholder = { Text("e.g. 100") },
+                                    label = { Text("Stock (L)".t(currentLanguage)) },
+                                    placeholder = { Text("e.g. 100".t(currentLanguage)) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -6143,8 +6569,8 @@ fun InventoryTab(
                                 OutlinedTextField(
                                     value = rateVal,
                                     onValueChange = { rateInputs[type] = it },
-                                    label = { Text("Price (₹/L)") },
-                                    placeholder = { Text("e.g. 50") },
+                                    label = { Text("Price (₹/L)".t(currentLanguage)) },
+                                    placeholder = { Text("e.g. 50".t(currentLanguage)) },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -6455,7 +6881,7 @@ fun InventoryTab(
                     OutlinedTextField(
                         value = newCategoryName,
                         onValueChange = { newCategoryName = it },
-                        label = { Text("Category Name (e.g. Goat Milk)") },
+                        label = { Text("Category Name (e.g. Goat Milk)".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
@@ -6470,7 +6896,7 @@ fun InventoryTab(
                     OutlinedTextField(
                         value = newCategoryPrice,
                         onValueChange = { newCategoryPrice = it },
-                        label = { Text("Baseline Rate per Liter (₹)") },
+                        label = { Text("Baseline Rate per Liter (₹)".t(currentLanguage)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -6531,6 +6957,7 @@ fun CustomersTab(
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
     businessName: String = "Krishna Milk Depot"
 ) {
+    val currentLanguage = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
     
     if (selectedCustomer != null) {
@@ -6571,12 +6998,12 @@ fun CustomersTab(
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Customer Ledgers",
+                            text = "Customer Ledgers".t(currentLanguage),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black
                         )
                         Text(
-                            text = "Manage accounts, outstanding dues & deliveries",
+                            text = "Manage accounts, outstanding dues & deliveries".t(currentLanguage),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
@@ -6587,7 +7014,7 @@ fun CustomersTab(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search customer accounts...") },
+                    placeholder = { Text("Search customer accounts...".t(currentLanguage)) },
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = PrimaryMilk) },
                     trailingIcon = {
@@ -6802,6 +7229,7 @@ fun CustomerProfileView(
     businessName: String = "Krishna Milk Depot"
 ) {
     val context = LocalContext.current
+    val currentLanguage = LocalAppLanguage.current
     
     // Edit details states
     var phoneInput by remember(customer.id) { mutableStateOf(customer.phone ?: "") }
@@ -7028,7 +7456,7 @@ fun CustomerProfileView(
                         OutlinedTextField(
                             value = phoneInput,
                             onValueChange = { phoneInput = it },
-                            label = { Text("Logistics Contact Number") },
+                            label = { Text("Logistics Contact Number".t(currentLanguage)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -7043,7 +7471,7 @@ fun CustomerProfileView(
                         OutlinedTextField(
                             value = addressInput,
                             onValueChange = { addressInput = it },
-                            label = { Text("Delivery Address / Client Base") },
+                            label = { Text("Delivery Address / Client Base".t(currentLanguage)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = false,
                             maxLines = 2,
@@ -7058,7 +7486,7 @@ fun CustomerProfileView(
                         OutlinedTextField(
                             value = notesInput,
                             onValueChange = { notesInput = it },
-                            label = { Text("Operational Notes / Preferences") },
+                            label = { Text("Operational Notes / Preferences".t(currentLanguage)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = false,
                             maxLines = 3,
@@ -7792,6 +8220,209 @@ fun CustomerProfileView(
             },
             whatsAppNumber = customer.phone
         )
+    }
+}
+
+@Composable
+fun TrialExpiredScreen(
+    ownerName: String,
+    businessName: String,
+    onPayNow: () -> Unit,
+    onResetTrial: () -> Unit,
+    onSubtract31Days: () -> Unit
+) {
+    val context = LocalContext.current
+    var showPaymentLoading by remember { mutableStateOf(false) }
+    var paymentSuccess by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F172A)) // Deep space slate theme for the lockout background
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Elegant lockout indicator / icon lock
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444).copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "App Locked",
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "31-Day Free Trial Expired",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Thank you for using DairySync ERP!\nYour trial period has concluded.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.7f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Business Name:", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text(businessName, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Registered Owner:", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text(ownerName, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Offline Database Status:", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.bodySmall)
+                        Text("Safe, Locked 🔒", color = Color(0xFFE2E8F0), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 12.dp))
+
+                    Text(
+                        "Gain lifetime access to manage multiple clients, generate PDFs, invoice reports, offline backups, and coordinate UPI auto-shares seamlessly.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (!showPaymentLoading && !paymentSuccess) {
+                Button(
+                    onClick = {
+                        showPaymentLoading = true
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.CreditCard, contentDescription = "Payment")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Unlock Premium License • ₹1,499", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                }
+
+                Spacer(modifier = Modifier.height(30.dp))
+
+                // Under-tray developers controls to easily reset/simulate for verification
+                Text(
+                    "Demo & Testing Controls:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            onResetTrial()
+                            Toast.makeText(context, "Trial Reset Succeed: Welcome Back!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.White.copy(alpha = 0.08f), contentColor = Color.White)
+                    ) {
+                        Text("Reset 31-Day Trial", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            onSubtract31Days()
+                            Toast.makeText(context, "Subtracted elapsed days: App is Locked", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.White.copy(alpha = 0.08f), contentColor = Color.White)
+                    ) {
+                        Text("Subtract 31 Days", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            } else if (showPaymentLoading) {
+                // Highly realistic animated progress / simulator
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = PrimaryMilk)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Initiating secure payment gateway...", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Text("UPI ID auto-resolving...", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+
+                        LaunchedEffect(Unit) {
+                            kotlinx.coroutines.delay(2000)
+                            showPaymentLoading = false
+                            paymentSuccess = true
+                            kotlinx.coroutines.delay(1500)
+                            onPayNow()
+                            Toast.makeText(context, "Payment verified successfully!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            } else if (paymentSuccess) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    border = BorderStroke(2.dp, Color(0xFF22C55E))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Success",
+                            tint = Color(0xFF22C55E),
+                            modifier = Modifier.size(54.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Success! Lifetime License Activated", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Launching Premium Console...", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    }
+                }
+            }
+        }
     }
 }
 
