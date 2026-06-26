@@ -33,6 +33,9 @@ interface CustomerDao {
 
     @Query("DELETE FROM customers WHERE id = :id")
     suspend fun hardDeleteCustomer(id: String)
+
+    @Query("SELECT * FROM customers WHERE isSynced = 1")
+    suspend fun getSyncedCustomers(): List<CustomerEntity>
 }
 
 @Dao
@@ -69,6 +72,9 @@ interface SaleDao {
 
     @Query("DELETE FROM sales WHERE id = :id")
     suspend fun hardDeleteSale(id: String)
+
+    @Query("SELECT * FROM sales WHERE isSynced = 1")
+    suspend fun getSyncedSales(): List<SaleEntity>
 }
 
 @Dao
@@ -87,6 +93,12 @@ interface PriceDao {
 
     @Query("UPDATE price_configs SET isSynced = 1, updatedAt = :syncTime WHERE milkType = :milkType")
     suspend fun markPriceSynced(milkType: String, syncTime: Long)
+
+    @Query("SELECT * FROM price_configs WHERE isSynced = 1")
+    suspend fun getSyncedPriceConfigs(): List<PriceConfigEntity>
+
+    @Query("DELETE FROM price_configs WHERE milkType = :milkType")
+    suspend fun deletePriceConfig(milkType: String)
 
     @Query("SELECT * FROM price_logs ORDER BY timestamp DESC")
     fun getAllPriceLogsFlow(): Flow<List<PriceLogEntity>>
@@ -111,4 +123,10 @@ interface MilkInventoryDao {
 
     @Query("UPDATE milk_inventory SET isSynced = 1, updatedAt = :syncTime WHERE dateStr = :dateStr")
     suspend fun markInventorySynced(dateStr: String, syncTime: Long)
+
+    @Query("SELECT * FROM milk_inventory WHERE isSynced = 1")
+    suspend fun getSyncedInventory(): List<MilkInventoryEntity>
+
+    @Query("DELETE FROM milk_inventory WHERE dateStr = :dateStr")
+    suspend fun deleteInventory(dateStr: String)
 }

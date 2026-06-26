@@ -14,7 +14,8 @@ data class CustomerEntity(
     val notes: String? = null,
     val isSynced: Boolean = false,
     val isDeleted: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val userName: String? = null
 )
 
 @Entity(tableName = "sales")
@@ -32,7 +33,8 @@ data class SaleEntity(
     val createdAt: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false,
     val isDeleted: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val userName: String? = null
 )
 
 @Entity(tableName = "price_configs")
@@ -40,7 +42,8 @@ data class PriceConfigEntity(
     @PrimaryKey val milkType: String, // "Cow Milk", "Buffalo Milk", "A2 Milk"
     val currentPrice: Double,
     val isSynced: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val userName: String? = null
 )
 
 @Entity(tableName = "price_logs")
@@ -60,5 +63,6 @@ data class MilkInventoryEntity(
     val a2Liters: Double,
     val customStocksRaw: String = "", // e.g. "Goat Milk:50.0,Camel Milk:30.0"
     val isSynced: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val userName: String? = null
 )

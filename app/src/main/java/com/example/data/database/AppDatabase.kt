@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
         PriceLogEntity::class,
         MilkInventoryEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -57,6 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "dairysync_database"
                 )
                 .addMigrations(MIGRATION_5_6)
+                .fallbackToDestructiveMigration()
                 .addCallback(DatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

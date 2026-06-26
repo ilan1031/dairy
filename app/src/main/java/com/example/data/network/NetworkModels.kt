@@ -80,8 +80,15 @@ data class CustomerDto(
     val phone: String? = null,
     val qrPreference: String = "UPI",
     val address: String? = null,
-    val notes: String? = null
-)
+    val notes: String? = null,
+    val updatedAt: Long? = null,
+    val userName: String? = null,
+    val username: String? = null,
+    val createdBy: String? = null
+) {
+    val resolvedUserName: String?
+        get() = (userName ?: username ?: createdBy)?.trim()
+}
 
 @JsonClass(generateAdapter = true)
 data class SaleDto(
@@ -94,14 +101,29 @@ data class SaleDto(
     val totalAmount: Double,
     val paymentStatus: String,
     val paymentType: String,
-    val location: String? = null
-)
+    val location: String? = null,
+    val createdAt: Long? = null,
+    val updatedAt: Long? = null,
+    val userName: String? = null,
+    val username: String? = null,
+    val createdBy: String? = null
+) {
+    val resolvedUserName: String?
+        get() = (userName ?: username ?: createdBy)?.trim()
+}
 
 @JsonClass(generateAdapter = true)
 data class PriceConfigDto(
     val milkType: String,
-    val currentPrice: Double
-)
+    val currentPrice: Double,
+    val updatedAt: Long? = null,
+    val userName: String? = null,
+    val username: String? = null,
+    val createdBy: String? = null
+) {
+    val resolvedUserName: String?
+        get() = (userName ?: username ?: createdBy)?.trim()
+}
 
 @JsonClass(generateAdapter = true)
 data class InventoryDto(
@@ -109,8 +131,15 @@ data class InventoryDto(
     val cowLiters: Double,
     val buffaloLiters: Double,
     val a2Liters: Double,
-    val customStocksRaw: String = ""
-)
+    val customStocksRaw: String = "",
+    val updatedAt: Long? = null,
+    val userName: String? = null,
+    val username: String? = null,
+    val createdBy: String? = null
+) {
+    val resolvedUserName: String?
+        get() = (userName ?: username ?: createdBy)?.trim()
+}
 
 @JsonClass(generateAdapter = true)
 data class BootstrapData(

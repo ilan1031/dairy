@@ -33,6 +33,15 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     val totalCollected: StateFlow<Double>
     val totalLiters: StateFlow<Double>
 
+    private val _selectedUserFilter = MutableStateFlow("All")
+    val selectedUserFilter: StateFlow<String> = _selectedUserFilter.asStateFlow()
+
+    fun setSelectedUserFilter(user: String) {
+        _selectedUserFilter.value = user
+    }
+
+    val allUserNames: StateFlow<List<String>>
+
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
@@ -44,7 +53,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _businessName = MutableStateFlow(sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy")
     val businessName: StateFlow<String> = _businessName.asStateFlow()
 
-    private val _ownerName = MutableStateFlow(sharedPrefs.getString("owner_name", "Arun Kumar") ?: "Arun Kumar")
+    private val _ownerName = MutableStateFlow(sharedPrefs.getString("logged_in_user_name", sharedPrefs.getString("owner_name", "Arun Kumar")) ?: "Arun Kumar")
     val ownerName: StateFlow<String> = _ownerName.asStateFlow()
 
     private val _mobileNumber = MutableStateFlow(sharedPrefs.getString("mobile_number", "9876543210") ?: "9876543210")
@@ -161,6 +170,17 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun refreshProfileFromPrefs() {
+        val bName = sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy"
+        val oName = sharedPrefs.getString("logged_in_user_name", sharedPrefs.getString("owner_name", "Arun Kumar")) ?: "Arun Kumar"
+        val mobile = sharedPrefs.getString("mobile_number", "9876543210") ?: "9876543210"
+        val email = sharedPrefs.getString("email_address", "arun@gangadairy.com") ?: "arun@gangadairy.com"
+        _businessName.value = bName
+        _ownerName.value = oName
+        _mobileNumber.value = mobile
+        _emailAddress.value = email
+    }
+
     init {
         val lastLogin = sharedPrefs.getLong("last_login_timestamp", 0L)
         if (lastLogin != 0L && (System.currentTimeMillis() - lastLogin > 15 * 24 * 60 * 60 * 1000L)) {
@@ -190,6 +210,21 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             milkInventoryDao = database.milkInventoryDao()
         )
 
+        allUserNames = combine(
+            repository.customersFlow,
+            repository.salesFlow,
+            repository.pricesFlow,
+            repository.inventoryFlow,
+            _ownerName
+        ) { custs, sls, prcs, invs, owner ->
+            val names = mutableSetOf<String>()
+            custs.forEach { names.add(it.userName ?: owner) }
+            sls.forEach { names.add(it.userName ?: owner) }
+            prcs.forEach { names.add(it.userName ?: owner) }
+            invs.forEach { names.add(it.userName ?: owner) }
+            names.filter { it.isNotBlank() }.sorted()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
         // Expose flows with StateIn for lifecycle-aware compose collection
         customers = repository.customersFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -217,18 +252,51 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         totalLiters = repository.totalLitersFlow
             .map { it ?: 0.0 }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+        // Perform automatic startup check and synchronization if online
+        if (sharedPrefs.getBoolean("is_logged_in", false)) {
+            schedulePeriodicWorkManagerSync()
+            viewModelScope.launch(Dispatchers.IO) {
+                android.util.Log.d("DairyViewModel", "App opened: Checking internet connection for automatic startup sync...")
+                if (com.example.data.network.NetworkHelper.isInternetAvailable(application)) {
+                    android.util.Log.d("DairyViewModel", "Internet connection detected on startup. Calling APIs to store data locally...")
+                    _isSyncing.value = true
+                    try {
+                        // 1. Sync any local unsynced edits/deletions to the server first
+                        repository.syncUnsyncedData(application)
+                        // 2. Fetch and update the latest subscription status
+                        repository.checkSubscriptionFromServer(application)
+                        refreshSubscriptionState()
+                        // 3. Bootstrap all latest data from backend server (Customers, Sales, Inventory, Prices)
+                        val success = repository.bootstrapDataFromServer(application)
+                        if (success) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                refreshProfileFromPrefs()
+                            }
+                        }
+                        android.util.Log.d("DairyViewModel", "Automatic startup sync completed. Success: $success")
+                    } catch (e: Exception) {
+                        android.util.Log.e("DairyViewModel", "Error occurred during automatic startup sync: ${e.message}", e)
+                    } finally {
+                        _isSyncing.value = false
+                    }
+                } else {
+                    android.util.Log.d("DairyViewModel", "No internet connection detected on startup. Using stored local data.")
+                }
+            }
+        }
     }
 
     fun addNewCustomer(name: String, phone: String?, qrPreference: String, id: String = java.util.UUID.randomUUID().toString()) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.insertCustomer(id, name, phone, qrPreference)
+            repository.insertCustomer(id, name, phone, qrPreference, userName = ownerName.value)
             triggerAutoSync()
         }
     }
 
     fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.saveCustomerDetails(id, name, phone, qrPreference, address, notes)
+            repository.saveCustomerDetails(id, name, phone, qrPreference, address, notes, userName = ownerName.value)
             triggerAutoSync()
         }
     }
@@ -333,7 +401,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 ratePerLiter = ratePerLiter,
                 paymentStatus = paymentStatus,
                 paymentType = paymentType,
-                location = resolvedLocation
+                location = resolvedLocation,
+                userName = ownerName.value
             )
             // Trigger automatic real-time sync
             triggerAutoSync()
@@ -359,7 +428,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updatePrice(milkType: String, newPrice: Double) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateMilkPrice(milkType, newPrice)
+            repository.updateMilkPrice(milkType, newPrice, userName = ownerName.value)
             triggerAutoSync()
         }
     }
@@ -378,7 +447,12 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 repository.checkSubscriptionFromServer(getApplication())
                 refreshSubscriptionState()
                 // Perform real download bootstrap sync
-                repository.bootstrapDataFromServer(getApplication())
+                val success = repository.bootstrapDataFromServer(getApplication())
+                if (success) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        refreshProfileFromPrefs()
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -396,13 +470,14 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 if (response.isSuccessful && response.body()?.success == true) {
                     val auth = response.body()!!
                     val bName = auth.profile?.businessName ?: "Ganga Premium Dairy"
-                    val oName = auth.profile?.ownerName ?: "Arun Kumar"
+                    val oName = auth.user?.name ?: auth.profile?.ownerName ?: "Arun Kumar"
                     val mobile = auth.profile?.mobileNumber ?: "9876543210"
                     
                     sharedPrefs.edit()
                         .putBoolean("is_logged_in", true)
                         .putString("business_name", bName)
-                        .putString("owner_name", oName)
+                        .putString("owner_name", auth.profile?.ownerName ?: oName)
+                        .putString("logged_in_user_name", oName)
                         .putString("mobile_number", mobile)
                         .putString("email_address", emailVal)
                         .putString("password", passwordVal)
@@ -418,6 +493,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Migrate pre-existing offline data first
                     repository.syncUnsyncedData(context)
+                    schedulePeriodicWorkManagerSync()
+                    
+                    // Clear guest/default database and prepare for bootstrapped real data
+                    repository.clearAllLocalData(context, seedDefaults = true)
                     
                     // Fetch dynamic subscription status from server
                     repository.checkSubscriptionFromServer(context)
@@ -462,25 +541,35 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         return try {
             val response = apiService.register(com.example.data.network.RegisterRequest(bName, oName, mobile, em, pass))
             if (response.isSuccessful && response.body()?.success == true) {
+                val auth = response.body()!!
+                val realBName = auth.profile?.businessName ?: bName
+                val realOName = auth.user?.name ?: auth.profile?.ownerName ?: oName
+                val realMobile = auth.profile?.mobileNumber ?: mobile
+                
                 sharedPrefs.edit()
                     .putBoolean("is_logged_in", true)
-                    .putString("business_name", bName)
-                    .putString("owner_name", oName)
-                    .putString("mobile_number", mobile)
+                    .putString("business_name", realBName)
+                    .putString("owner_name", auth.profile?.ownerName ?: realOName)
+                    .putString("logged_in_user_name", realOName)
+                    .putString("mobile_number", realMobile)
                     .putString("email_address", em)
                     .putString("password", pass)
                     .putLong("last_login_timestamp", System.currentTimeMillis())
                     .apply()
                 
                 _isLoggedIn.value = true
-                _businessName.value = bName
-                _ownerName.value = oName
-                _mobileNumber.value = mobile
+                _businessName.value = realBName
+                _ownerName.value = realOName
+                _mobileNumber.value = realMobile
                 _emailAddress.value = em
                 _password.value = pass
                 
                 // Migrate pre-existing offline data first
                 repository.syncUnsyncedData(context)
+                schedulePeriodicWorkManagerSync()
+                
+                // Clear guest/default database and prepare for bootstrapped real data
+                repository.clearAllLocalData(context, seedDefaults = true)
                 
                 // Fetch dynamic subscription status from server
                 repository.checkSubscriptionFromServer(context)
@@ -527,6 +616,11 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+                try {
+                    repository.clearAllLocalData(context, seedDefaults = true)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 // Reset subscription StateFlows upon logout
                 refreshSubscriptionState()
             }
@@ -553,6 +647,26 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Schedule periodic background sync (acting as a recurring cron job)
+     * which runs periodically with a CONNECTED network constraint.
+     */
+    fun schedulePeriodicWorkManagerSync() {
+        val syncConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val periodicSyncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, java.util.concurrent.TimeUnit.MINUTES)
+            .setConstraints(syncConstraints)
+            .build()
+
+        WorkManager.getInstance(getApplication()).enqueueUniquePeriodicWork(
+            "PeriodicDataSyncJob",
+            ExistingPeriodicWorkPolicy.KEEP,
+            periodicSyncRequest
+        )
+    }
+
     fun triggerAutoSync() {
         viewModelScope.launch(Dispatchers.IO) {
             repository.syncUnsyncedData(getApplication())
@@ -561,14 +675,14 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveMilkInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.insertOrUpdateInventory(cow, buffalo, a2, dateStr, customStocksRaw)
+            repository.insertOrUpdateInventory(cow, buffalo, a2, dateStr, customStocksRaw, userName = ownerName.value)
             triggerAutoSync()
         }
     }
 
     fun addNewMilkCategory(milkType: String, basePrice: Double = 50.0) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateMilkPrice(milkType, basePrice)
+            repository.updateMilkPrice(milkType, basePrice, userName = ownerName.value)
             triggerAutoSync()
         }
     }

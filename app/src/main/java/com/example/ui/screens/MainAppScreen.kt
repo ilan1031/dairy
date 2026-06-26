@@ -7,6 +7,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.entity.CustomerEntity
+import com.example.data.entity.MilkInventoryEntity
 import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
@@ -141,6 +143,78 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     // SELLER REGISTER PROFILES
     val customers by viewModel.customers.collectAsState()
     val sales by viewModel.sales.collectAsState()
+    val prices by viewModel.prices.collectAsState()
+    val priceLogs by viewModel.priceLogs.collectAsState()
+    val inventories by viewModel.inventories.collectAsState()
+    val totalPending by viewModel.totalPending.collectAsState()
+    val totalCollected by viewModel.totalCollected.collectAsState()
+    val totalLiters by viewModel.totalLiters.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
+    val isLightTheme by viewModel.isLightTheme.collectAsState()
+
+    val selectedUserFilter by viewModel.selectedUserFilter.collectAsState()
+    val allUserNames by viewModel.allUserNames.collectAsState()
+
+    val filteredSales = remember(sales, selectedUserFilter, ownerName) {
+        if (selectedUserFilter == "All") sales
+        else sales.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+    }
+
+    val filteredCustomers = remember(customers, selectedUserFilter, ownerName) {
+        if (selectedUserFilter == "All") customers
+        else customers.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+    }
+
+    val filteredPrices = remember(prices, selectedUserFilter, ownerName) {
+        if (selectedUserFilter == "All") prices
+        else prices.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+    }
+
+    val filteredInventories = remember(inventories, selectedUserFilter, ownerName) {
+        if (selectedUserFilter == "All") inventories
+        else inventories.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+    }
+
+    val displayTotalPending = remember(filteredSales) {
+        filteredSales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+    }
+
+    val displayTotalCollected = remember(filteredSales) {
+        filteredSales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+    }
+
+    val displayTotalLiters = remember(filteredSales) {
+        filteredSales.sumOf { it.liters }
+    }
+
+    val displayTotalRevenue = remember(filteredSales) {
+        filteredSales.sumOf { it.totalAmount }
+    }
+
+    val todayStart = remember(sales) {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        calendar.timeInMillis
+    }
+
+    val dailySales = remember(filteredSales, todayStart) {
+        filteredSales.filter { it.createdAt >= todayStart }
+    }
+
+    val dailyTotalPending = remember(dailySales) {
+        dailySales.filter { it.paymentStatus == "PENDING" }.sumOf { it.totalAmount }
+    }
+
+    val dailyTotalCollected = remember(dailySales) {
+        dailySales.filter { it.paymentStatus == "PAID" }.sumOf { it.totalAmount }
+    }
+
+    val dailyTotalLiters = remember(dailySales) {
+        dailySales.sumOf { it.liters }
+    }
 
     val currentSalesCount = sales.size
     val currentCustomersCount = customers.size
@@ -152,13 +226,6 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val isCustomerLimitExceeded = remember(subCustomerLimit, currentCustomersCount) {
         subCustomerLimit in 0..currentCustomersCount
     }
-    val prices by viewModel.prices.collectAsState()
-    val priceLogs by viewModel.priceLogs.collectAsState()
-    val totalPending by viewModel.totalPending.collectAsState()
-    val totalCollected by viewModel.totalCollected.collectAsState()
-    val totalLiters by viewModel.totalLiters.collectAsState()
-    val isSyncing by viewModel.isSyncing.collectAsState()
-    val isLightTheme by viewModel.isLightTheme.collectAsState()
 
     // PREMIUM CONFIG TOGGLE FOR THE COMMUNITY PREMIER MODULE
     var isCommunityOwnerFeatureActive by rememberSaveable { mutableStateOf(false) }
@@ -183,14 +250,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
         }
     }
 
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(locationPermissions)
-    }
-
     // DIALOGS & FILTERS
     var showQuickCustomerDialog by remember { mutableStateOf(false) }
     var showInventoryDialog by remember { mutableStateOf(false) }
-    val inventories by viewModel.inventories.collectAsState()
     var filterText by remember { mutableStateOf("") }
     var billsDateFilter by remember { mutableStateOf("Month") } // Today, Week, Month, Year
     var selectedInvoiceForDetail by remember { mutableStateOf<SaleEntity?>(null) }
@@ -362,11 +424,66 @@ fun MainAppScreen(viewModel: DairyViewModel) {
             },
             containerColor = MaterialTheme.colorScheme.background
         ) { paddingValues ->
-            Box(
+            Column(
                 modifier = Modifier
                     .padding(paddingValues)
                     .fillMaxSize()
             ) {
+                if (activeTab in listOf(0, 1, 2, 3, 4, 6)) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        tonalElevation = 2.dp,
+                        shadowElevation = 1.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Operator:".t(currentLanguage),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryMilk
+                            )
+                            LazyRow(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val listOptions = listOf("All") + allUserNames
+                                items(listOptions) { opt ->
+                                    val isSelected = opt == selectedUserFilter
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { viewModel.setSelectedUserFilter(opt) },
+                                        label = {
+                                            Text(
+                                                text = opt,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = PrimaryMilk,
+                                            selectedLabelColor = Color.White,
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                ) {
                 when (activeTab) {
                     0 -> {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -408,11 +525,11 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             }
                             DashboardTab(
                                 ownerName = ownerName,
-                                sales = sales,
-                                customers = customers,
-                                totalPending = totalPending,
-                                totalCollected = totalCollected,
-                                totalLiters = totalLiters,
+                                sales = dailySales,
+                                customers = filteredCustomers,
+                                totalPending = dailyTotalPending,
+                                totalCollected = dailyTotalCollected,
+                                totalLiters = dailyTotalLiters,
                                 onQuickAction = { actionType ->
                                     when (actionType) {
                                         "NEW_SALE" -> activeTab = 1
@@ -441,10 +558,10 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         }
                     }
                     1 -> SalesTab(
-                        customers = customers,
-                        prices = prices,
-                        sales = sales,
-                        inventories = inventories,
+                        customers = filteredCustomers,
+                        prices = filteredPrices,
+                        sales = filteredSales,
+                        inventories = filteredInventories,
                         onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
                             if (!subCanCreate) {
                                 permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
@@ -481,9 +598,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         }
                     )
                     2 -> CustomersTab(
-                        customers = customers,
-                        sales = sales,
-                        prices = prices,
+                        customers = filteredCustomers,
+                        sales = filteredSales,
+                        prices = filteredPrices,
                         selectedCustomer = selectedCustomerForProfile,
                         onSelectCustomer = { selectedCustomerForProfile = it },
                         onUpdateCustomerDetails = { id, name, phone, qr, addr, notes ->
@@ -527,22 +644,26 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                 showSuccessSavedToast = true
                             }
                         },
-                        businessName = businessName
+                        businessName = businessName,
+                        ownerName = ownerName
                     )
                     3 -> BillsTab(
-                        sales = sales,
+                        sales = filteredSales,
                         dateFilter = billsDateFilter,
                         onDateFilterChange = { billsDateFilter = it },
-                        onInvoiceClick = { selectedInvoiceForDetail = it }
+                        onInvoiceClick = { selectedInvoiceForDetail = it },
+                        ownerName = ownerName
                     )
                     4 -> ReportsTab(
-                        sales = sales,
-                        totalPending = totalPending,
-                        totalCollected = totalCollected,
-                        totalLiters = totalLiters,
-                        totalRevenue = totalRevenueCalculated,
+                        sales = filteredSales,
+                        inventories = filteredInventories,
+                        totalPending = displayTotalPending,
+                        totalCollected = displayTotalCollected,
+                        totalLiters = displayTotalLiters,
+                        totalRevenue = displayTotalRevenue,
                         isCommunityActive = isCommunityOwnerFeatureActive,
-                        businessName = businessName
+                        businessName = businessName,
+                        ownerName = ownerName
                     )
                     5 -> SettingsTab(
                         businessName = businessName,
@@ -601,13 +722,14 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         onNavigateToInventory = { activeTab = 6 },
                         onTogglePaidStatus = { viewModel.setPaidStatus(it) },
                         onResetTrial = { viewModel.updateSignupTimestamp(System.currentTimeMillis()) },
-                        onSubtract31Days = { viewModel.updateSignupTimestamp(System.currentTimeMillis() - (32 * 24 * 60 * 60 * 1000L)) }
+                        onSubtract31Days = { viewModel.updateSignupTimestamp(System.currentTimeMillis() - (32 * 24 * 60 * 60 * 1000L)) },
+                        onRequestLocationPermission = { permissionLauncher.launch(locationPermissions) }
                     )
                     6 -> InventoryTab(
-                        prices = prices,
+                        prices = filteredPrices,
                         priceLogs = priceLogs,
-                        inventories = inventories,
-                        sales = sales,
+                        inventories = filteredInventories,
+                        sales = filteredSales,
                         onAddCategory = { name, initialPrice ->
                             viewModel.addNewMilkCategory(name, initialPrice)
                         },
@@ -622,7 +744,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                 }
 
                 // Global Toast or success notification overlay for rapid sales entries
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = showSuccessSavedToast,
                     enter = fadeIn() + slideInVertically(),
                     exit = fadeOut() + slideOutVertically(),
@@ -769,6 +891,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
 
 
             }
+        }
 
             if (isBlockedBySubscription) {
                 SubscriptionExpiredScreen(
@@ -1722,6 +1845,22 @@ fun DashboardTab(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.Gray
                                 )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = PrimaryMilk,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = (sale.userName ?: ownerName).ifBlank { ownerName },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = PrimaryMilk,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
 
@@ -3378,7 +3517,8 @@ fun BillsTab(
     sales: List<SaleEntity>,
     dateFilter: String,
     onDateFilterChange: (String) -> Unit,
-    onInvoiceClick: (SaleEntity) -> Unit
+    onInvoiceClick: (SaleEntity) -> Unit,
+    ownerName: String
 ) {
     val currentLanguage = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
@@ -3947,6 +4087,22 @@ fun BillsTab(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Gray
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = PrimaryMilk,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = (item.userName ?: ownerName).ifBlank { ownerName },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PrimaryMilk,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -4722,12 +4878,14 @@ fun BillingDetailRow(label: String, valStr: String) {
 @Composable
 fun ReportsTab(
     sales: List<SaleEntity>,
+    inventories: List<MilkInventoryEntity>,
     totalPending: Double,
     totalCollected: Double,
     totalLiters: Double,
     totalRevenue: Double,
     isCommunityActive: Boolean,
-    businessName: String
+    businessName: String,
+    ownerName: String
 ) {
     val context = LocalContext.current
     var selectedIntervalFilter by remember { mutableStateOf("Weekly") }
@@ -4749,6 +4907,33 @@ fun ReportsTab(
             else -> 0L // "Multi-Year"
         }
         sales.filter { it.createdAt >= cutoff }
+    }
+
+    val filteredInventories = remember(inventories, selectedIntervalFilter) {
+        val now = System.currentTimeMillis()
+        val cutoff = when (selectedIntervalFilter) {
+            "Today" -> {
+                val calendar = java.util.Calendar.getInstance()
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                calendar.set(java.util.Calendar.MILLISECOND, 0)
+                calendar.timeInMillis
+            }
+            "Weekly" -> now - (7 * 24 * 60 * 60 * 1000L)
+            "Monthly" -> now - (30 * 24 * 60 * 60 * 1000L)
+            "Yearly" -> now - (365 * 24 * 60 * 60 * 1000L)
+            else -> 0L
+        }
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        inventories.filter { inv ->
+            val timestamp = try { sdf.parse(inv.dateStr)?.time ?: 0L } catch(e: Exception) { 0L }
+            timestamp >= cutoff
+        }
+    }
+
+    val totalSourcedLiters = remember(filteredInventories) {
+        filteredInventories.sumOf { it.cowLiters + it.buffaloLiters + it.a2Liters }
     }
 
     val displayTotalPending = remember(filteredSales) {
@@ -4911,6 +5096,98 @@ fun ReportsTab(
                             fontWeight = FontWeight.Bold,
                             color = if (maxOutstandingDebtorAmt > 0) AlertRed else OrganicGreen
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.WaterDrop, contentDescription = null, tint = PrimaryMilk, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Milk Supply vs. Demand Discrepancy:",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 26.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Total Sourced", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text("${String.format("%.1f", totalSourcedLiters)} L", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = PrimaryMilk)
+                        }
+                        Column {
+                            Text("Total Sold", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text("${String.format("%.1f", displayTotalLiters)} L", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = OrganicGreen)
+                        }
+                        Column {
+                            val discrepancy = (totalSourcedLiters - displayTotalLiters).coerceAtLeast(0.0)
+                            Text("Unsold Stock", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            Text("${String.format("%.1f", discrepancy)} L", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = if (discrepancy > 0) PrimaryGold else Color.Gray)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.2f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Category Comparison Breakdown:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(start = 26.dp)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val milkTypes = listOf(
+                        Triple("Cow Milk", filteredInventories.sumOf { it.cowLiters }, filteredSales.filter { it.milkType == "Cow Milk" }.sumOf { it.liters }),
+                        Triple("Buffalo Milk", filteredInventories.sumOf { it.buffaloLiters }, filteredSales.filter { it.milkType == "Buffalo Milk" }.sumOf { it.liters }),
+                        Triple("A2 Milk", filteredInventories.sumOf { it.a2Liters }, filteredSales.filter { it.milkType == "A2 Milk" }.sumOf { it.liters })
+                    )
+
+                    milkTypes.forEach { (type, sourced, sold) ->
+                        val diff = (sourced - sold).coerceAtLeast(0.0)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 26.dp, top = 4.dp, bottom = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = type,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1.2f)
+                            )
+                            Text(
+                                text = "Src: ${String.format("%.1f", sourced)}L",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = PrimaryMilk,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "Sold: ${String.format("%.1f", sold)}L",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OrganicGreen,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "Diff: ${String.format("%.1f", diff)}L",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (diff > 0) PrimaryGold else Color.Gray,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }
@@ -5582,7 +5859,7 @@ fun ReportsTab(
                     HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (sales.isEmpty()) {
+                    if (filteredSales.isEmpty()) {
                         Text(
                             "No transaction rows to show.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -5590,13 +5867,22 @@ fun ReportsTab(
                             modifier = Modifier.padding(vertical = 12.dp).align(Alignment.CenterHorizontally)
                         )
                     } else {
-                        sales.forEach { item ->
+                        filteredSales.forEach { item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(item.customerName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.5f), overflow = TextOverflow.Ellipsis, maxLines = 1)
+                                Column(modifier = Modifier.weight(1.5f)) {
+                                    Text(item.customerName, style = MaterialTheme.typography.bodyMedium, overflow = TextOverflow.Ellipsis, maxLines = 1)
+                                    Text(
+                                        text = "By: ${(item.userName ?: ownerName).ifBlank { ownerName }}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray,
+                                        overflow = TextOverflow.Ellipsis,
+                                        maxLines = 1
+                                    )
+                                }
                                 Text("${item.liters}L", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 Text(
                                     item.paymentStatus,
@@ -5707,7 +5993,8 @@ fun SettingsTab(
     onNavigateToInventory: () -> Unit,
     onTogglePaidStatus: (Boolean) -> Unit,
     onResetTrial: () -> Unit,
-    onSubtract31Days: () -> Unit
+    onSubtract31Days: () -> Unit,
+    onRequestLocationPermission: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -6048,6 +6335,50 @@ fun SettingsTab(
                             checked = isLightTheme,
                             onCheckedChange = { onThemeToggleChange(it) }
                         )
+                    }
+                }
+            }
+        }
+
+        // GPS & Location Services Settings
+        item {
+            Text("GPS & Location Services".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Enable GPS Location Tagging".t(currentLanguage), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            Text("Tags your milk collections with exact physical location coordinates".t(currentLanguage), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val hasCoarseLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val isLocationGranted = hasFineLocation || hasCoarseLocation
+
+                        Button(
+                            onClick = { onRequestLocationPermission() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isLocationGranted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text(
+                                if (isLocationGranted) "GPS Active".t(currentLanguage) else "Enable GPS".t(currentLanguage),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                 }
             }
@@ -7106,7 +7437,8 @@ fun CustomersTab(
     onTriggerQuickAdd: () -> Unit,
     onBackToDashboard: () -> Unit,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
-    businessName: String = "Krishna Milk Depot"
+    businessName: String = "Krishna Milk Depot",
+    ownerName: String
 ) {
     val currentLanguage = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
@@ -7120,7 +7452,8 @@ fun CustomersTab(
             onUpdateDetails = onUpdateCustomerDetails,
             onSettlePayment = onSettlePayment,
             onAddSale = onAddSale,
-            businessName = businessName
+            businessName = businessName,
+            ownerName = ownerName
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -7322,6 +7655,22 @@ fun CustomersTab(
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = Color.Gray
                                             )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    tint = PrimaryMilk,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = (customer.userName ?: ownerName).ifBlank { ownerName },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PrimaryMilk,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(horizontalAlignment = Alignment.End) {
@@ -7377,7 +7726,8 @@ fun CustomerProfileView(
     onUpdateDetails: (String, String, String?, String, String?, String?) -> Unit,
     onSettlePayment: (SaleEntity, String) -> Unit,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
-    businessName: String = "Krishna Milk Depot"
+    businessName: String = "Krishna Milk Depot",
+    ownerName: String
 ) {
     val context = LocalContext.current
     val currentLanguage = LocalAppLanguage.current
@@ -7859,6 +8209,22 @@ fun CustomerProfileView(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color.Gray
                                     )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = PrimaryMilk,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = (sale.userName ?: ownerName).ifBlank { ownerName },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = PrimaryMilk,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
 
                                 Column(horizontalAlignment = Alignment.End) {

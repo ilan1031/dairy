@@ -12,12 +12,10 @@ class PersistentCookieJar(context: Context) : CookieJar {
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val editor = sharedPrefs.edit()
         cookies.forEach { cookie ->
-            if (cookie.name == "dairy_session" || cookie.name == "dairy_login" || cookie.name == "dairy_subscription") {
-                if (cookie.value.isEmpty() || cookie.expiresAt <= System.currentTimeMillis()) {
-                    editor.remove(cookie.name)
-                } else {
-                    editor.putString(cookie.name, cookie.value)
-                }
+            if (cookie.value.isEmpty() || cookie.expiresAt <= System.currentTimeMillis()) {
+                editor.remove(cookie.name)
+            } else {
+                editor.putString(cookie.name, cookie.toString())
             }
         }
         editor.apply()
@@ -26,19 +24,36 @@ class PersistentCookieJar(context: Context) : CookieJar {
     @Synchronized
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val cookies = mutableListOf<Cookie>()
-        val session = sharedPrefs.getString("dairy_session", null)
-        val login = sharedPrefs.getString("dairy_login", null)
-        val subscription = sharedPrefs.getString("dairy_subscription", null)
-
         val domain = url.host
-        if (session != null) {
-            cookies.add(Cookie.Builder().name("dairy_session").value(session).domain(domain).build())
-        }
-        if (login != null) {
-            cookies.add(Cookie.Builder().name("dairy_login").value(login).domain(domain).build())
-        }
-        if (subscription != null) {
-            cookies.add(Cookie.Builder().name("dairy_subscription").value(subscription).domain(domain).build())
+        sharedPrefs.all.forEach { (key, value) ->
+            if (value is String) {
+                var cookie = Cookie.parse(url, value)
+                if (cookie == null) {
+                    val rawValue = if (value.contains(";")) {
+                        val firstPart = value.substringBefore(";")
+                        if (firstPart.contains("=")) {
+                            firstPart.substringAfter("=")
+                        } else {
+                            value
+                        }
+                    } else {
+                        value
+                    }
+                    try {
+                        cookie = Cookie.Builder()
+                            .name(key)
+                            .value(rawValue)
+                            .domain(domain)
+                            .path("/")
+                            .build()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                if (cookie != null) {
+                    cookies.add(cookie)
+                }
+            }
         }
         return cookies
     }

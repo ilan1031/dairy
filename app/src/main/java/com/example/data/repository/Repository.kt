@@ -33,7 +33,7 @@ class Repository(
         return milkInventoryDao.getInventoryForDate(dateStr)
     }
 
-    suspend fun insertOrUpdateInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "") {
+    suspend fun insertOrUpdateInventory(cow: Double, buffalo: Double, a2: Double, dateStr: String, customStocksRaw: String = "", userName: String? = null) {
         val inventory = MilkInventoryEntity(
             dateStr = dateStr,
             cowLiters = cow,
@@ -41,7 +41,8 @@ class Repository(
             a2Liters = a2,
             customStocksRaw = customStocksRaw,
             isSynced = false,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            userName = userName
         )
         milkInventoryDao.insertInventory(inventory)
     }
@@ -50,19 +51,20 @@ class Repository(
         return customerDao.getAllCustomers()
     }
 
-    suspend fun insertCustomer(id: String, name: String, phone: String?, qrPreference: String) {
+    suspend fun insertCustomer(id: String, name: String, phone: String?, qrPreference: String, userName: String? = null) {
         val customer = CustomerEntity(
             id = id,
             name = name,
             phone = phone,
             qrPreference = qrPreference,
             isSynced = false,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            userName = userName
         )
         customerDao.insertCustomer(customer)
     }
 
-    suspend fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?) {
+    suspend fun saveCustomerDetails(id: String, name: String, phone: String?, qrPreference: String, address: String?, notes: String?, userName: String? = null) {
         val customer = CustomerEntity(
             id = id,
             name = name,
@@ -72,7 +74,8 @@ class Repository(
             notes = notes,
             isSynced = false,
             isDeleted = false,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            userName = userName
         )
         customerDao.insertCustomer(customer)
     }
@@ -89,7 +92,8 @@ class Repository(
         ratePerLiter: Double,
         paymentStatus: String,
         paymentType: String,
-        location: String?
+        location: String?,
+        userName: String? = null
     ) {
         val sale = SaleEntity(
             id = UUID.randomUUID().toString(),
@@ -104,7 +108,8 @@ class Repository(
             location = location,
             createdAt = System.currentTimeMillis(),
             isSynced = false,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            userName = userName
         )
         saleDao.insertSale(sale)
     }
@@ -122,7 +127,7 @@ class Repository(
         )
     }
 
-    suspend fun updateMilkPrice(milkType: String, newPrice: Double) {
+    suspend fun updateMilkPrice(milkType: String, newPrice: Double, userName: String? = null) {
         val currentPrices = pricesFlow.firstOrNull() ?: emptyList()
         val currentPriceEntity = currentPrices.find { it.milkType == milkType }
         val oldPrice = currentPriceEntity?.currentPrice ?: 0.0
@@ -133,7 +138,8 @@ class Repository(
                     milkType = milkType,
                     currentPrice = newPrice,
                     isSynced = false,
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    userName = userName
                 )
             )
             priceDao.insertPriceLog(
@@ -189,7 +195,9 @@ class Repository(
                         phone = customer.phone,
                         qrPreference = customer.qrPreference,
                         address = customer.address,
-                        notes = customer.notes
+                        notes = customer.notes,
+                        updatedAt = customer.updatedAt,
+                        userName = customer.userName
                     )
                     val response = apiService.saveCustomer(dto)
                     if (response.isSuccessful && response.body()?.success == true) {
@@ -224,7 +232,10 @@ class Repository(
                         totalAmount = sale.totalAmount,
                         paymentStatus = sale.paymentStatus,
                         paymentType = sale.paymentType,
-                        location = sale.location
+                        location = sale.location,
+                        createdAt = sale.createdAt,
+                        updatedAt = sale.updatedAt,
+                        userName = sale.userName
                     )
                     val response = apiService.saveSale(dto)
                     if (response.isSuccessful && response.body()?.success == true) {
@@ -242,7 +253,9 @@ class Repository(
             for (price in unsyncedPrices) {
                 val response = apiService.savePrice(mapOf(
                     "milkType" to price.milkType,
-                    "price" to price.currentPrice
+                    "price" to price.currentPrice,
+                    "updatedAt" to price.updatedAt,
+                    "userName" to (price.userName ?: "")
                 ))
                 if (response.isSuccessful && response.body()?.success == true) {
                     priceDao.markPriceSynced(price.milkType, System.currentTimeMillis())
@@ -261,7 +274,9 @@ class Repository(
                     cowLiters = inventory.cowLiters,
                     buffaloLiters = inventory.buffaloLiters,
                     a2Liters = inventory.a2Liters,
-                    customStocksRaw = inventory.customStocksRaw
+                    customStocksRaw = inventory.customStocksRaw,
+                    updatedAt = inventory.updatedAt,
+                    userName = inventory.userName
                 )
                 val response = apiService.saveInventory(dto)
                 if (response.isSuccessful && response.body()?.success == true) {
@@ -279,92 +294,180 @@ class Repository(
     }
 
     suspend fun bootstrapDataFromServer(context: android.content.Context, selectedUserId: String? = null): Boolean {
-        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) return false
+        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
+            android.util.Log.e("Repository", "Bootstrap failed: Internet not available")
+            return false
+        }
         val apiService = com.example.data.network.ApiClient.getApiService(context)
+        android.util.Log.d("Repository", "Starting bootstrapDataFromServer... selectedUserId: $selectedUserId")
         return try {
             val reqBody = if (selectedUserId != null) mapOf("selectedUserId" to selectedUserId) else emptyMap()
             val response = apiService.bootstrap(reqBody)
-            if (response.isSuccessful && response.body()?.success == true) {
-                val data = response.body()?.data ?: return false
-                
-                // 1. Customers
-                data.customers?.forEach { cust ->
-                    val local = customerDao.getCustomerById(cust.id)
-                    if (local == null || local.isSynced) {
-                        customerDao.insertCustomer(
-                            CustomerEntity(
-                                id = cust.id,
-                                name = cust.name,
-                                phone = cust.phone,
-                                qrPreference = cust.qrPreference,
-                                address = cust.address,
-                                notes = cust.notes,
-                                isSynced = true,
-                                isDeleted = false,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
+            android.util.Log.d("Repository", "Bootstrap API response code: ${response.code()}")
+            if (response.isSuccessful) {
+                val body = response.body()
+                android.util.Log.d("Repository", "Bootstrap API success field: ${body?.success}")
+                if (body?.success == true) {
+                    val data = body.data
+                    if (data == null) {
+                        android.util.Log.e("Repository", "Bootstrap failed: data body is null")
+                        return false
                     }
-                }
 
-                // 2. Sales
-                data.sales?.forEach { sale ->
-                    val local = saleDao.getSaleById(sale.id)
-                    if (local == null || local.isSynced) {
-                        saleDao.insertSale(
-                            SaleEntity(
-                                id = sale.id,
-                                customerId = sale.customerId,
-                                customerName = sale.customerName,
-                                milkType = sale.milkType,
-                                liters = sale.liters,
-                                ratePerLiter = sale.ratePerLiter,
-                                totalAmount = sale.totalAmount,
-                                paymentStatus = sale.paymentStatus,
-                                paymentType = sale.paymentType,
-                                location = sale.location,
-                                isSynced = true,
-                                isDeleted = false,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
+                    // Save Profile if returned
+                    data.profile?.let { profile ->
+                        val prefs = context.getSharedPreferences("dairy_sync_prefs", android.content.Context.MODE_PRIVATE)
+                        prefs.edit()
+                            .putString("business_name", profile.businessName)
+                            .putString("owner_name", profile.ownerName)
+                            .putString("mobile_number", profile.mobileNumber)
+                            .putString("email_address", profile.emailAddress)
+                            .apply()
                     }
-                }
+                    
+                    // 1. Customers
+                    val customers = data.customers ?: emptyList()
+                    android.util.Log.d("Repository", "Bootstrap: Received ${customers.size} customers")
+                    customers.forEach { cust ->
+                        val local = customerDao.getCustomerById(cust.id)
+                        if (local == null || local.isSynced) {
+                            customerDao.insertCustomer(
+                                CustomerEntity(
+                                    id = cust.id,
+                                    name = cust.name,
+                                    phone = cust.phone,
+                                    qrPreference = cust.qrPreference,
+                                    address = cust.address,
+                                    notes = cust.notes,
+                                    isSynced = true,
+                                    isDeleted = false,
+                                    updatedAt = cust.updatedAt ?: System.currentTimeMillis(),
+                                    userName = cust.resolvedUserName
+                                )
+                            )
+                        }
+                    }
 
-                 // 3. Price configs
-                 data.priceConfigs?.forEach { price ->
-                     val local = priceDao.getPriceConfig(price.milkType)
-                     if (local == null || local.isSynced) {
-                         priceDao.insertPriceConfig(
-                             PriceConfigEntity(
-                                 milkType = price.milkType,
-                                 currentPrice = price.currentPrice,
-                                 isSynced = true,
-                                 updatedAt = System.currentTimeMillis()
-                             )
-                         )
+                    // Delete local synced customers that are not present in server response
+                    val localSyncedCustomers = customerDao.getSyncedCustomers()
+                    val serverCustomerIds = customers.map { it.id }.toSet()
+                    localSyncedCustomers.forEach { local ->
+                        if (!serverCustomerIds.contains(local.id)) {
+                            customerDao.hardDeleteCustomer(local.id)
+                            android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced customer ${local.id} (not in server)")
+                        }
+                    }
+
+                    // 2. Sales
+                    val sales = data.sales ?: emptyList()
+                    android.util.Log.d("Repository", "Bootstrap: Received ${sales.size} sales")
+                    sales.forEach { sale ->
+                        val local = saleDao.getSaleById(sale.id)
+                        if (local == null || local.isSynced) {
+                            saleDao.insertSale(
+                                SaleEntity(
+                                    id = sale.id,
+                                    customerId = sale.customerId,
+                                    customerName = sale.customerName,
+                                    milkType = sale.milkType,
+                                    liters = sale.liters,
+                                    ratePerLiter = sale.ratePerLiter,
+                                    totalAmount = sale.totalAmount,
+                                    paymentStatus = sale.paymentStatus,
+                                    paymentType = sale.paymentType,
+                                    location = sale.location,
+                                    createdAt = sale.createdAt ?: System.currentTimeMillis(),
+                                    isSynced = true,
+                                    isDeleted = false,
+                                    updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
+                                    userName = sale.resolvedUserName
+                                )
+                            )
+                        }
+                    }
+
+                    // Delete local synced sales that are not present in server response
+                    val localSyncedSales = saleDao.getSyncedSales()
+                    val serverSaleIds = sales.map { it.id }.toSet()
+                    localSyncedSales.forEach { local ->
+                        if (!serverSaleIds.contains(local.id)) {
+                            saleDao.hardDeleteSale(local.id)
+                            android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced sale ${local.id} (not in server)")
+                        }
+                    }
+
+                     // 3. Price configs
+                     if (data.priceConfigs.isNullOrEmpty()) {
+                         android.util.Log.d("Repository", "Bootstrap: No price configs in response, seeding default prices")
+                         priceDao.insertPriceConfig(PriceConfigEntity("Cow Milk", 50.0, isSynced = true))
+                         priceDao.insertPriceConfig(PriceConfigEntity("Buffalo Milk", 70.0, isSynced = true))
+                         priceDao.insertPriceConfig(PriceConfigEntity("A2 Milk", 90.0, isSynced = true))
+                     } else {
+                         android.util.Log.d("Repository", "Bootstrap: Received ${data.priceConfigs.size} price configs")
+                         data.priceConfigs.forEach { price ->
+                             val local = priceDao.getPriceConfig(price.milkType)
+                             if (local == null || local.isSynced) {
+                                 priceDao.insertPriceConfig(
+                                     PriceConfigEntity(
+                                         milkType = price.milkType,
+                                         currentPrice = price.currentPrice,
+                                         isSynced = true,
+                                         updatedAt = price.updatedAt ?: System.currentTimeMillis(),
+                                         userName = price.resolvedUserName
+                                     )
+                                 )
+                             }
+                         }
+
+                         // Delete local synced price configs that are not present in server response
+                         val localSyncedPrices = priceDao.getSyncedPriceConfigs()
+                         val serverMilkTypes = data.priceConfigs.map { it.milkType }.toSet()
+                         localSyncedPrices.forEach { local ->
+                             if (!serverMilkTypes.contains(local.milkType)) {
+                                 priceDao.deletePriceConfig(local.milkType)
+                                 android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced price config ${local.milkType} (not in server)")
+                             }
+                         }
                      }
-                 }
- 
-                 // 4. Inventory
-                 data.inventory?.forEach { inv ->
-                     val local = milkInventoryDao.getInventoryForDate(inv.dateStr)
-                     if (local == null || local.isSynced) {
-                         milkInventoryDao.insertInventory(
-                             MilkInventoryEntity(
-                                 dateStr = inv.dateStr,
-                                 cowLiters = inv.cowLiters,
-                                 buffaloLiters = inv.buffaloLiters,
-                                 a2Liters = inv.a2Liters,
-                                 customStocksRaw = inv.customStocksRaw,
-                                 isSynced = true,
-                                 updatedAt = System.currentTimeMillis()
+     
+                     // 4. Inventory
+                     val inventory = data.inventory ?: emptyList()
+                     android.util.Log.d("Repository", "Bootstrap: Received ${inventory.size} inventory items")
+                     inventory.forEach { inv ->
+                         val local = milkInventoryDao.getInventoryForDate(inv.dateStr)
+                         if (local == null || local.isSynced) {
+                             milkInventoryDao.insertInventory(
+                                 MilkInventoryEntity(
+                                     dateStr = inv.dateStr,
+                                     cowLiters = inv.cowLiters,
+                                     buffaloLiters = inv.buffaloLiters,
+                                     a2Liters = inv.a2Liters,
+                                     customStocksRaw = inv.customStocksRaw,
+                                     isSynced = true,
+                                     updatedAt = inv.updatedAt ?: System.currentTimeMillis(),
+                                     userName = inv.resolvedUserName
+                                 )
                              )
-                         )
+                         }
                      }
-                 }
-                true
+
+                     // Delete local synced inventory items that are not present in server response
+                     val localSyncedInventory = milkInventoryDao.getSyncedInventory()
+                     val serverDates = inventory.map { it.dateStr }.toSet()
+                     localSyncedInventory.forEach { local ->
+                         if (!serverDates.contains(local.dateStr)) {
+                             milkInventoryDao.deleteInventory(local.dateStr)
+                             android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced inventory ${local.dateStr} (not in server)")
+                         }
+                     }
+                    android.util.Log.d("Repository", "Bootstrap data from server completed successfully!")
+                    true
+                } else {
+                    android.util.Log.e("Repository", "Bootstrap failed: success is false. Error: ${body?.error}")
+                    false
+                }
             } else {
+                android.util.Log.e("Repository", "Bootstrap failed with network error: ${response.errorBody()?.string()}")
                 false
             }
         } catch (e: Exception) {
@@ -402,6 +505,19 @@ class Repository(
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to check subscription status: ${e.message}", e)
             null
+        }
+    }
+
+    suspend fun clearAllLocalData(context: android.content.Context, seedDefaults: Boolean = true) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val db = com.example.data.database.AppDatabase.getDatabase(context, kotlinx.coroutines.GlobalScope)
+            db.clearAllTables()
+            if (seedDefaults) {
+                val priceDao = db.priceDao()
+                priceDao.insertPriceConfig(PriceConfigEntity("Cow Milk", 50.0, isSynced = true))
+                priceDao.insertPriceConfig(PriceConfigEntity("Buffalo Milk", 70.0, isSynced = true))
+                priceDao.insertPriceConfig(PriceConfigEntity("A2 Milk", 90.0, isSynced = true))
+            }
         }
     }
 }
