@@ -389,7 +389,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         ratePerLiter: Double,
         paymentStatus: String,
         paymentType: String,
-        location: String? = null
+        location: String? = null,
+        createdAt: Long = System.currentTimeMillis()
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val resolvedLocation = location ?: getCurrentLocationString()
@@ -402,7 +403,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 paymentStatus = paymentStatus,
                 paymentType = paymentType,
                 location = resolvedLocation,
-                userName = ownerName.value
+                userName = ownerName.value,
+                createdAt = createdAt
             )
             // Trigger automatic real-time sync
             triggerAutoSync()

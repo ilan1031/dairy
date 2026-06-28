@@ -93,7 +93,8 @@ class Repository(
         paymentStatus: String,
         paymentType: String,
         location: String?,
-        userName: String? = null
+        userName: String? = null,
+        createdAt: Long = System.currentTimeMillis()
     ) {
         val sale = SaleEntity(
             id = UUID.randomUUID().toString(),
@@ -106,7 +107,7 @@ class Repository(
             paymentStatus = paymentStatus,
             paymentType = paymentType,
             location = location,
-            createdAt = System.currentTimeMillis(),
+            createdAt = createdAt,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
             userName = userName

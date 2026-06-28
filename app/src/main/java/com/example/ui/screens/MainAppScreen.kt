@@ -562,7 +562,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         prices = filteredPrices,
                         sales = filteredSales,
                         inventories = filteredInventories,
-                        onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
+                        onAddSale = { customerId, customerName, milkType, liters, finalRate, pType, createdAt ->
                             if (!subCanCreate) {
                                 permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
                                 showPermissionErrorDialog = true
@@ -580,7 +580,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                     liters = liters,
                                     ratePerLiter = finalRate,
                                     paymentStatus = status,
-                                    paymentType = resolvedPaymentType
+                                    paymentType = resolvedPaymentType,
+                                    createdAt = createdAt
                                 )
                                 showSuccessSavedToast = true
                             }
@@ -621,7 +622,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         },
                         onTriggerQuickAdd = { showQuickCustomerDialog = true },
                         onBackToDashboard = { activeTab = 0 },
-                        onAddSale = { customerId, customerName, milkType, liters, finalRate, pType ->
+                        onAddSale = { customerId, customerName, milkType, liters, finalRate, pType, createdAt ->
                             if (!subCanCreate) {
                                 permissionErrorMsg = "Your system administrator has restricted creation permissions on this account."
                                 showPermissionErrorDialog = true
@@ -639,7 +640,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                     liters = liters,
                                     ratePerLiter = finalRate,
                                     paymentStatus = status,
-                                    paymentType = resolvedPaymentType
+                                    paymentType = resolvedPaymentType,
+                                    createdAt = createdAt
                                 )
                                 showSuccessSavedToast = true
                             }
@@ -1947,7 +1949,7 @@ fun SalesTab(
     prices: List<PriceConfigEntity>,
     sales: List<SaleEntity>,
     inventories: List<com.example.data.entity.MilkInventoryEntity>,
-    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
+    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String, createdAt: Long) -> Unit,
     onQuickAddCustomer: (String, String, String, String) -> Unit
 ) {
     val currentLanguage = LocalAppLanguage.current
@@ -1955,6 +1957,11 @@ fun SalesTab(
     var inputQuery by remember { mutableStateOf("") }
     var selectedCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
+
+    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+    val selectedDateStr = remember(selectedCalendar) {
+        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(selectedCalendar.time)
+    }
 
     // Computations outside LazyColumn for today's customer numbering
     val todayStart = remember(sales) {
@@ -2795,6 +2802,112 @@ fun SalesTab(
             }
         }
 
+        // STEP 3.5: TRANSACTION DATE
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryMilk),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "3.5",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Transaction Date",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        val dp = android.app.DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                val newCal = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, day)
+                                }
+                                selectedCalendar = newCal
+                            },
+                            selectedCalendar.get(Calendar.YEAR),
+                            selectedCalendar.get(Calendar.MONTH),
+                            selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                        )
+                        dp.show()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = "Select Date",
+                                tint = PrimaryMilk,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Sale Date",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = selectedDateStr,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        
+                        TextButton(
+                            onClick = {
+                                val dp = android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        val newCal = Calendar.getInstance().apply {
+                                            set(Calendar.YEAR, year)
+                                            set(Calendar.MONTH, month)
+                                            set(Calendar.DAY_OF_MONTH, day)
+                                        }
+                                        selectedCalendar = newCal
+                                    },
+                                    selectedCalendar.get(Calendar.YEAR),
+                                    selectedCalendar.get(Calendar.MONTH),
+                                    selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                                )
+                                dp.show()
+                            }
+                        ) {
+                            Text("Change Date", color = PrimaryMilk, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
         // STEP 4: PAYMENT SECTOR
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -3099,7 +3212,8 @@ fun SalesTab(
                             selectedMilkType,
                             selectedLiters,
                             rateResolved,
-                            paymentTypeChoice
+                            paymentTypeChoice,
+                            selectedCalendar.timeInMillis
                         )
                         
                         // Clear selected params for quick next entry
@@ -3109,6 +3223,7 @@ fun SalesTab(
                         selectedLiters = 1.0
                         rawLitersInput = "1.0"
                         paymentTypeChoice = "CASH"
+                        selectedCalendar = Calendar.getInstance()
                     }
                 },
                 modifier = Modifier
@@ -5829,7 +5944,7 @@ fun ReportsTab(
                         Text("Active Sellers Performance", fontWeight = FontWeight.Black, style = MaterialTheme.typography.labelLarge)
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        CommunitySellerStatRow("Arun Kumar (You)", "120L transacted", "₹4,500 Sold")
+                        CommunitySellerStatRow("$ownerName (You)", "120L transacted", "₹4,500 Sold")
                         CommunitySellerStatRow("Vikram Depot", "150L transacted", "₹5,200 Sold")
                         CommunitySellerStatRow("Gyan Dairy Coop", "90L transacted", "₹3,300 Sold")
                         CommunitySellerStatRow("Mother Dairy Hub 2", "60L transacted", "₹1,500 Sold")
@@ -7436,7 +7551,7 @@ fun CustomersTab(
     onSettlePayment: (SaleEntity, String) -> Unit,
     onTriggerQuickAdd: () -> Unit,
     onBackToDashboard: () -> Unit,
-    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
+    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String, createdAt: Long) -> Unit,
     businessName: String = "Krishna Milk Depot",
     ownerName: String
 ) {
@@ -7725,7 +7840,7 @@ fun CustomerProfileView(
     onBack: () -> Unit,
     onUpdateDetails: (String, String, String?, String, String?, String?) -> Unit,
     onSettlePayment: (SaleEntity, String) -> Unit,
-    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String) -> Unit,
+    onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String, createdAt: Long) -> Unit,
     businessName: String = "Krishna Milk Depot",
     ownerName: String
 ) {
@@ -8476,6 +8591,11 @@ fun CustomerProfileView(
                         color = PrimaryMilk
                     )
 
+                    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+                    val selectedDateStr = remember(selectedCalendar) {
+                        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(selectedCalendar.time)
+                    }
+
                     // 1. Category Selection
                     var selectedCategory by remember { mutableStateOf(prices.firstOrNull()?.milkType ?: "Cow Milk") }
                     Column {
@@ -8659,6 +8779,54 @@ fun CustomerProfileView(
                         }
                     }
 
+                    // 3.5. Date Selection
+                    Column {
+                        Text(
+                            text = "Date Selection",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                val dp = android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        val newCal = Calendar.getInstance().apply {
+                                            set(Calendar.YEAR, year)
+                                            set(Calendar.MONTH, month)
+                                            set(Calendar.DAY_OF_MONTH, day)
+                                        }
+                                        selectedCalendar = newCal
+                                    },
+                                    selectedCalendar.get(Calendar.YEAR),
+                                    selectedCalendar.get(Calendar.MONTH),
+                                    selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                                )
+                                dp.show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, PrimaryMilk),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryMilk)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Selected Date: $selectedDateStr",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+
                     // 4. Live Calculation feedback card
                     val rateResolved = prices.find { it.milkType == selectedCategory }?.currentPrice ?: 50.0
                     val currentLiters = litersStr.toDoubleOrNull() ?: 0.0
@@ -8709,7 +8877,8 @@ fun CustomerProfileView(
                                         selectedCategory,
                                         litersVal,
                                         rateResolved,
-                                        paymentStatusChoice
+                                        paymentStatusChoice,
+                                        selectedCalendar.timeInMillis
                                     )
                                     showQuickAddSaleDialog = false
                                     Toast.makeText(context, "Direct sale log created successfully!", Toast.LENGTH_SHORT).show()
