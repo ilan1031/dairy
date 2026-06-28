@@ -349,7 +349,8 @@ class Repository(
                         }
                     }
 
-                    // Delete local synced customers that are not present in server response
+                    // Delete local synced customers that are not present in server response (Disabled to preserve historical offline data)
+                    /*
                     val localSyncedCustomers = customerDao.getSyncedCustomers()
                     val serverCustomerIds = customers.map { it.id }.toSet()
                     localSyncedCustomers.forEach { local ->
@@ -358,6 +359,7 @@ class Repository(
                             android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced customer ${local.id} (not in server)")
                         }
                     }
+                    */
 
                     // 2. Sales
                     val sales = data.sales ?: emptyList()
@@ -377,7 +379,7 @@ class Repository(
                                     paymentStatus = sale.paymentStatus,
                                     paymentType = sale.paymentType,
                                     location = sale.location,
-                                    createdAt = sale.createdAt ?: System.currentTimeMillis(),
+                                    createdAt = local?.createdAt ?: sale.createdAt ?: System.currentTimeMillis(),
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
@@ -387,7 +389,8 @@ class Repository(
                         }
                     }
 
-                    // Delete local synced sales that are not present in server response
+                    // Delete local synced sales that are not present in server response (Disabled to preserve historical offline data)
+                    /*
                     val localSyncedSales = saleDao.getSyncedSales()
                     val serverSaleIds = sales.map { it.id }.toSet()
                     localSyncedSales.forEach { local ->
@@ -396,6 +399,7 @@ class Repository(
                             android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced sale ${local.id} (not in server)")
                         }
                     }
+                    */
 
                      // 3. Price configs
                      if (data.priceConfigs.isNullOrEmpty()) {
@@ -425,8 +429,8 @@ class Repository(
                          val serverMilkTypes = data.priceConfigs.map { it.milkType }.toSet()
                          localSyncedPrices.forEach { local ->
                              if (!serverMilkTypes.contains(local.milkType)) {
-                                 priceDao.deletePriceConfig(local.milkType)
-                                 android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced price config ${local.milkType} (not in server)")
+                                 // priceDao.deletePriceConfig(local.milkType)
+                                 // android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced price config ${local.milkType} (not in server)")
                              }
                          }
                      }
@@ -457,8 +461,8 @@ class Repository(
                      val serverDates = inventory.map { it.dateStr }.toSet()
                      localSyncedInventory.forEach { local ->
                          if (!serverDates.contains(local.dateStr)) {
-                             milkInventoryDao.deleteInventory(local.dateStr)
-                             android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced inventory ${local.dateStr} (not in server)")
+                             // milkInventoryDao.deleteInventory(local.dateStr)
+                             // android.util.Log.d("Repository", "Bootstrap cleanup: Deleted local synced inventory ${local.dateStr} (not in server)")
                          }
                      }
                     android.util.Log.d("Repository", "Bootstrap data from server completed successfully!")

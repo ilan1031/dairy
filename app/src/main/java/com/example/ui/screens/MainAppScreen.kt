@@ -216,8 +216,8 @@ fun MainAppScreen(viewModel: DairyViewModel) {
         dailySales.sumOf { it.liters }
     }
 
-    val currentSalesCount = sales.size
-    val currentCustomersCount = customers.size
+    val currentSalesCount = sales.count { it.isSynced }
+    val currentCustomersCount = customers.count { it.isSynced }
 
     val isSalesLimitExceeded = remember(subSalesLimit, currentSalesCount) {
         subSalesLimit in 0..currentSalesCount
@@ -261,7 +261,7 @@ fun MainAppScreen(viewModel: DairyViewModel) {
 
     LaunchedEffect(sales) {
         if (shouldAutoPreviewNext && sales.isNotEmpty()) {
-            val newestSale = sales.maxByOrNull { it.createdAt }
+            val newestSale = sales.maxByOrNull { it.updatedAt }
             if (newestSale != null) {
                 selectedInvoiceForDetail = newestSale
             }
