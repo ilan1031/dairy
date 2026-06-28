@@ -254,7 +254,7 @@ class Repository(
             for (price in unsyncedPrices) {
                 val response = apiService.savePrice(mapOf(
                     "milkType" to price.milkType,
-                    "price" to price.currentPrice,
+                    "newPrice" to price.currentPrice,
                     "updatedAt" to price.updatedAt,
                     "userName" to (price.userName ?: "")
                 ))

@@ -1977,7 +1977,7 @@ fun SalesTab(
     }
     val nextAutoCustomerName = "Customer ${todaySalesCount + 1}"
 
-    val sdf = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    val sdf = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
     val todayDateStr = remember { sdf.format(Date()) }
 
     val todayInventory = remember(inventories, todayDateStr) {
@@ -3258,7 +3258,7 @@ fun SalesTab(
 fun parseDateStr(dateStr: String, startOfDay: Boolean): Long? {
     if (dateStr.isBlank()) return null
     return try {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
         val date = sdf.parse(dateStr) ?: return null
         val cal = java.util.Calendar.getInstance().apply {
             time = date
@@ -6807,7 +6807,7 @@ fun InventoryTab(
 ) {
     val context = LocalContext.current
     val currentLanguage = LocalAppLanguage.current
-    val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()) }
+    val sdf = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US) }
     var dateStringInput by remember { mutableStateOf(sdf.format(java.util.Date())) }
     val dateFormat = remember { java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault()) }
 
