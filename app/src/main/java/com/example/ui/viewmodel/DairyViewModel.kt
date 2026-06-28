@@ -644,7 +644,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
 
         WorkManager.getInstance(getApplication()).enqueueUniqueWork(
             "DataSyncQueue",
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             syncWorkRequest
         )
     }

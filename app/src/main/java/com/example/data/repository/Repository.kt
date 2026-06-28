@@ -159,7 +159,7 @@ class Repository(
     }
 
     suspend fun markSaleSynced(id: String) {
-        saleDao.markSaleSynced(id, System.currentTimeMillis())
+        saleDao.markSaleSynced(id)
     }
 
     suspend fun getUnsyncedCustomers(): List<CustomerEntity> {
@@ -240,7 +240,7 @@ class Repository(
                     )
                     val response = apiService.saveSale(dto)
                     if (response.isSuccessful && response.body()?.success == true) {
-                        saleDao.markSaleSynced(sale.id, System.currentTimeMillis())
+                        saleDao.markSaleSynced(sale.id)
                         android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
                     } else {
                         android.util.Log.e("Repository", "Failed to sync sale ${sale.id}: ${response.errorBody()?.string()}")
@@ -383,7 +383,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
-                                    userName = sale.resolvedUserName
+                                    userName = local?.userName ?: sale.resolvedUserName
                                 )
                             )
                         }
