@@ -10,6 +10,7 @@ import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
 import com.example.data.entity.MilkInventoryEntity
+import com.example.data.network.UserDto
 import com.example.data.repository.Repository
 import com.example.worker.SyncWorker
 import kotlinx.coroutines.Dispatchers
@@ -36,10 +37,27 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedUserFilter = MutableStateFlow("All")
     val selectedUserFilter: StateFlow<String> = _selectedUserFilter.asStateFlow()
 
+    private val _selectedUserId = MutableStateFlow("all")
+    val selectedUserId: StateFlow<String> = _selectedUserId.asStateFlow()
+
     fun setSelectedUserFilter(user: String) {
         _selectedUserFilter.value = user
+        _selectedUserId.value = if (user == "All") "all" else users.value.find { it.name == user }?.id ?: "all"
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncing.value = true
+            try {
+                repository.fetchUsersFromServer(getApplication(), _selectedUserId.value)
+                repository.bootstrapDataFromServer(getApplication(), _selectedUserId.value)
+            } catch (e: Exception) {
+                android.util.Log.e("DairyViewModel", "Failed to refresh scoped data for filter '$user': ${e.message}", e)
+            } finally {
+                _isSyncing.value = false
+            }
+        }
     }
 
+    val users: StateFlow<List<UserDto>>
     val allUserNames: StateFlow<List<String>>
 
     private val _isSyncing = MutableStateFlow(false)
@@ -286,20 +304,18 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             milkInventoryDao = database.milkInventoryDao()
         )
 
-        allUserNames = combine(
-            repository.customersFlow,
-            repository.salesFlow,
-            repository.pricesFlow,
-            repository.inventoryFlow,
-            _ownerName
-        ) { custs, sls, prcs, invs, owner ->
-            val names = mutableSetOf<String>()
-            custs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            sls.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            prcs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            invs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            names.filter { it.isNotBlank() }.sorted()
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        users = repository.usersFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        allUserNames = users
+            .map { userList ->
+                userList
+                    .map { it.name.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .sorted()
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
         // Expose flows with StateIn for lifecycle-aware compose collection
         customers = repository.customersFlow
@@ -572,23 +588,36 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     _password.value = passwordVal
                     
                     // Migrate pre-existing offline data first
-                    repository.syncUnsyncedData(context)
+                    try {
+                        repository.syncUnsyncedData(context)
+                    } catch (e: Exception) {
+                        android.util.Log.w("DairyViewModel", "Initial sync skipped after login: ${e.message}", e)
+                    }
                     schedulePeriodicWorkManagerSync()
-                    
+
                     // Clear guest/default database and prepare for bootstrapped real data
                     repository.clearAllLocalData(context, seedDefaults = true)
-                    
+
                     // Fetch dynamic subscription status from server
-                    repository.checkSubscriptionFromServer(context)
+                    try {
+                        repository.checkSubscriptionFromServer(context)
+                    } catch (e: Exception) {
+                        android.util.Log.w("DairyViewModel", "Subscription check failed after login: ${e.message}", e)
+                    }
                     refreshSubscriptionState()
-                    
-                    // Fetch bootstrap data
-                    repository.bootstrapDataFromServer(context)
-                    
+
+                    // Fetch scoped users and bootstrap data
+                    try {
+                        repository.fetchUsersFromServer(context, selectedUserId.value)
+                        repository.bootstrapDataFromServer(context, selectedUserId.value)
+                    } catch (e: Exception) {
+                        android.util.Log.w("DairyViewModel", "User list/bootstrap failed after login: ${e.message}", e)
+                    }
+
                     // Refresh branding/profile after bootstrap
                     refreshProfileFromPrefs()
                     refreshBrandingFromPrefs()
-                    
+
                     null
                 } else {
                     response.body()?.error ?: "Invalid email address or password"
@@ -649,23 +678,36 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 _password.value = pass
                 
                 // Migrate pre-existing offline data first
-                repository.syncUnsyncedData(context)
+                try {
+                    repository.syncUnsyncedData(context)
+                } catch (e: Exception) {
+                    android.util.Log.w("DairyViewModel", "Initial sync skipped after login: ${e.message}", e)
+                }
                 schedulePeriodicWorkManagerSync()
-                
+
                 // Clear guest/default database and prepare for bootstrapped real data
                 repository.clearAllLocalData(context, seedDefaults = true)
-                
+
                 // Fetch dynamic subscription status from server
-                repository.checkSubscriptionFromServer(context)
+                try {
+                    repository.checkSubscriptionFromServer(context)
+                } catch (e: Exception) {
+                    android.util.Log.w("DairyViewModel", "Subscription check failed after login: ${e.message}", e)
+                }
                 refreshSubscriptionState()
-                
-                // Fetch bootstrap data
-                repository.bootstrapDataFromServer(context)
-                
+
+                // Fetch scoped users and bootstrap data
+                try {
+                    repository.fetchUsersFromServer(context, selectedUserId.value)
+                    repository.bootstrapDataFromServer(context, selectedUserId.value)
+                } catch (e: Exception) {
+                    android.util.Log.w("DairyViewModel", "User list/bootstrap failed after login: ${e.message}", e)
+                }
+
                 // Refresh branding/profile after bootstrap
                 refreshProfileFromPrefs()
                 refreshBrandingFromPrefs()
-                
+
                 null
             } else {
                 response.body()?.error ?: "Failed to register business."
@@ -719,20 +761,24 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
      * Schedule standard WorkManager background worker sync
      */
     private fun scheduleWorkManagerSync() {
-        val syncConstraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
-            .build()
+        try {
+            val syncConstraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .build()
 
-        val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-            .setConstraints(syncConstraints)
-            .build()
+            val syncWorkRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                .setConstraints(syncConstraints)
+                .build()
 
-        WorkManager.getInstance(getApplication()).enqueueUniqueWork(
-            "DataSyncQueue",
-            ExistingWorkPolicy.REPLACE,
-            syncWorkRequest
-        )
+            WorkManager.getInstance(getApplication()).enqueueUniqueWork(
+                "DataSyncQueue",
+                ExistingWorkPolicy.REPLACE,
+                syncWorkRequest
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("DairyViewModel", "Failed to schedule OneTime WorkManager sync: ${e.message}", e)
+        }
     }
 
     /**
@@ -740,19 +786,23 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
      * which runs periodically with a CONNECTED network constraint.
      */
     fun schedulePeriodicWorkManagerSync() {
-        val syncConstraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        try {
+            val syncConstraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
 
-        val periodicSyncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, java.util.concurrent.TimeUnit.MINUTES)
-            .setConstraints(syncConstraints)
-            .build()
+            val periodicSyncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, java.util.concurrent.TimeUnit.MINUTES)
+                .setConstraints(syncConstraints)
+                .build()
 
-        WorkManager.getInstance(getApplication()).enqueueUniquePeriodicWork(
-            "PeriodicDataSyncJob",
-            ExistingPeriodicWorkPolicy.KEEP,
-            periodicSyncRequest
-        )
+            WorkManager.getInstance(getApplication()).enqueueUniquePeriodicWork(
+                "PeriodicDataSyncJob",
+                ExistingPeriodicWorkPolicy.KEEP,
+                periodicSyncRequest
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("DairyViewModel", "Failed to schedule periodic WorkManager sync: ${e.message}", e)
+        }
     }
 
     fun triggerAutoSync() {

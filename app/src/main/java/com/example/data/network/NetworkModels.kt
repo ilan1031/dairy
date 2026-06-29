@@ -171,13 +171,21 @@ data class InventoryDto(
 }
 
 @JsonClass(generateAdapter = true)
+data class UsersListResponse(
+    val success: Boolean,
+    val error: String? = null,
+    val data: List<UserDto>? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class BootstrapData(
     val profile: ProfileDto? = null,
     val brandingConfig: BrandingConfigDto? = null,
     val customers: List<CustomerDto>? = null,
     val sales: List<SaleDto>? = null,
     val priceConfigs: List<PriceConfigDto>? = null,
-    val inventory: List<InventoryDto>? = null
+    val inventory: List<InventoryDto>? = null,
+    val users: List<UserDto>? = null
 )
 
 @JsonClass(generateAdapter = true)
