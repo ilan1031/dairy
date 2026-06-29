@@ -41,4 +41,10 @@ interface ApiService {
 
     @POST("data/inventory/save")
     suspend fun saveInventory(@Body request: InventoryDto): Response<GenericResponse>
+
+    @POST("data/profile/save")
+    suspend fun saveProfile(@Body request: ProfileDto): Response<ProfileSaveResponse>
+
+    @POST("data/branding/save")
+    suspend fun saveBranding(@Body request: BrandingConfigDto): Response<BrandingSaveResponse>
 }

@@ -273,9 +273,17 @@ fun MainAppScreen(viewModel: DairyViewModel) {
         sales.sumOf { it.totalAmount }
     }
 
+    // Auto-refresh branding from server when app resumes (user logged in)
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn && com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
+            viewModel.refreshBrandingFromServer()
+        }
+    }
+
     if (!isLoggedIn) {
         when (currentScreenState) {
             "SPLASH" -> SplashScreen(
+                businessName = businessName,
                 onNavigateLogin = { currentScreenState = "LOGIN" },
                 onNavigateRegister = { currentScreenState = "REGISTER" }
             )
@@ -988,6 +996,7 @@ fun AbielanBrandingFooter(
 // ==========================================
 @Composable
 fun SplashScreen(
+    businessName: String,
     onNavigateLogin: () -> Unit,
     onNavigateRegister: () -> Unit
 ) {
@@ -1024,7 +1033,7 @@ fun SplashScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "Dairy ERP".t(currentLanguage),
+                text = businessName,
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White

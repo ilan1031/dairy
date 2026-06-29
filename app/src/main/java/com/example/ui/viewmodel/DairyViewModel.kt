@@ -74,6 +74,16 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLightTheme = MutableStateFlow(sharedPrefs.getBoolean("is_light_theme", true)) // default to light theme (true)
     val isLightTheme: StateFlow<Boolean> = _isLightTheme.asStateFlow()
 
+    // Branding fields returned from server bootstrap
+    private val _brandingLogo = MutableStateFlow(sharedPrefs.getString("branding_logo", "") ?: "")
+    val brandingLogo: StateFlow<String> = _brandingLogo.asStateFlow()
+
+    private val _brandingBankName = MutableStateFlow(sharedPrefs.getString("branding_bank_name", "") ?: "")
+    val brandingBankName: StateFlow<String> = _brandingBankName.asStateFlow()
+
+    private val _brandingAddress = MutableStateFlow(sharedPrefs.getString("branding_address", "") ?: "")
+    val brandingAddress: StateFlow<String> = _brandingAddress.asStateFlow()
+
     private val _language = MutableStateFlow(sharedPrefs.getString("language", "en") ?: "en")
     val language: StateFlow<String> = _language.asStateFlow()
 
@@ -120,6 +130,15 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         _subCanDelete.value = sharedPrefs.getBoolean("sub_can_delete", true)
     }
 
+    /** Refresh branding/profile fields from SharedPreferences into state flows */
+    fun refreshBrandingFromPrefs() {
+        val prefs = sharedPrefs
+        _brandingLogo.value = prefs.getString("branding_logo", "") ?: ""
+        _brandingBankName.value = prefs.getString("branding_bank_name", "") ?: ""
+        // businessName is updated in refreshProfileFromPrefs already
+        _brandingAddress.value = prefs.getString("branding_address", "") ?: ""
+    }
+
     fun setLanguage(lang: String) {
         sharedPrefs.edit().putString("language", lang).apply()
         _language.value = lang
@@ -151,27 +170,65 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateProfile(bName: String, oName: String, mobile: String, em: String, pass: String) {
-        sharedPrefs.edit()
-            .putString("business_name", bName)
-            .putString("owner_name", oName)
-            .putString("mobile_number", mobile)
-            .putString("email_address", em)
-            .putString("password", pass)
-            .apply()
-        _businessName.value = bName
-        _ownerName.value = oName
-        _mobileNumber.value = mobile
-        _emailAddress.value = em
-        _password.value = pass
-        if (sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
-            val now = System.currentTimeMillis()
-            sharedPrefs.edit().putLong("signup_timestamp", now).apply()
-            _signupTimestamp.value = now
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val profileDto = com.example.data.network.ProfileDto(
+                    businessName = bName,
+                    ownerName = oName,
+                    mobileNumber = mobile,
+                    emailAddress = em,
+                    signupTimestamp = sharedPrefs.getLong("signup_timestamp", System.currentTimeMillis()),
+                    isLightTheme = sharedPrefs.getBoolean("is_light_theme", true),
+                    language = sharedPrefs.getString("language", "en") ?: "en"
+                )
+                val saved = repository.saveProfileToServer(getApplication(), profileDto)
+                if (saved != null) {
+                    sharedPrefs.edit()
+                        .putString("business_name", saved.businessName)
+                        .putString("owner_name", saved.ownerName)
+                        .putString("mobile_number", saved.mobileNumber)
+                        .putString("email_address", saved.emailAddress)
+                        .putString("password", pass)
+                        .putLong("signup_timestamp", saved.signupTimestamp)
+                        .apply()
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _businessName.value = saved.businessName
+                        _ownerName.value = saved.ownerName
+                        _mobileNumber.value = saved.mobileNumber
+                        _emailAddress.value = saved.emailAddress
+                        _password.value = pass
+                        if (sharedPrefs.getLong("signup_timestamp", 0L) == 0L) {
+                            val now = System.currentTimeMillis()
+                            sharedPrefs.edit().putLong("signup_timestamp", now).apply()
+                            _signupTimestamp.value = now
+                        }
+                    }
+                } else {
+                    // Fallback to local update if server save failed
+                    sharedPrefs.edit()
+                        .putString("business_name", bName)
+                        .putString("owner_name", oName)
+                        .putString("mobile_number", mobile)
+                        .putString("email_address", em)
+                        .putString("password", pass)
+                        .apply()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _businessName.value = bName
+                        _ownerName.value = oName
+                        _mobileNumber.value = mobile
+                        _emailAddress.value = em
+                        _password.value = pass
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun refreshProfileFromPrefs() {
-        val bName = sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy"
+        val bName = sharedPrefs.getString("branding_system_name", sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy") ?: "Ganga Premium Dairy"
         val oName = sharedPrefs.getString("logged_in_user_name", sharedPrefs.getString("owner_name", "Arun Kumar")) ?: "Arun Kumar"
         val mobile = sharedPrefs.getString("mobile_number", "9876543210") ?: "9876543210"
         val email = sharedPrefs.getString("email_address", "arun@gangadairy.com") ?: "arun@gangadairy.com"
@@ -179,6 +236,25 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         _ownerName.value = oName
         _mobileNumber.value = mobile
         _emailAddress.value = email
+    }
+
+    /** Trigger a bootstrap from server and refresh branding/profile/subscription state */
+    fun refreshBrandingFromServer() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // refresh subscription + bootstrap
+                repository.checkSubscriptionFromServer(getApplication())
+                repository.bootstrapDataFromServer(getApplication())
+                // update prefs-backed flows on main
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    refreshSubscriptionState()
+                    refreshProfileFromPrefs()
+                    refreshBrandingFromPrefs()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     init {

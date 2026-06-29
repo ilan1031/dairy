@@ -338,6 +338,16 @@ class Repository(
                             .putString("email_address", profile.emailAddress)
                             .apply()
                     }
+                    // Save Branding if returned
+                    data.brandingConfig?.let { branding ->
+                        val prefs = context.getSharedPreferences("dairy_sync_prefs", android.content.Context.MODE_PRIVATE)
+                        prefs.edit()
+                            .putString("branding_system_name", branding.systemName)
+                            .putString("branding_bank_name", branding.bankName)
+                            .putString("branding_logo", branding.logo)
+                            .putString("branding_address", branding.address)
+                            .apply()
+                    }
                     
                     // 1. Customers
                     val customers = data.customers ?: emptyList()
@@ -522,6 +532,57 @@ class Repository(
             }
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Failed to check subscription status: ${e.message}", e)
+            null
+        }
+    }
+
+    suspend fun saveProfileToServer(context: android.content.Context, profile: com.example.data.network.ProfileDto): com.example.data.network.ProfileDto? {
+        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) return null
+        val apiService = com.example.data.network.ApiClient.getApiService(context)
+        return try {
+            val response = apiService.saveProfile(profile)
+            if (response.isSuccessful && response.body()?.success == true) {
+                val saved = response.body()?.data
+                if (saved != null) {
+                    val prefs = context.getSharedPreferences("dairy_sync_prefs", android.content.Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("business_name", saved.businessName)
+                        .putString("owner_name", saved.ownerName)
+                        .putString("mobile_number", saved.mobileNumber)
+                        .putString("email_address", saved.emailAddress)
+                        .putLong("signup_timestamp", saved.signupTimestamp)
+                        .putBoolean("is_light_theme", saved.isLightTheme)
+                        .putString("language", saved.language)
+                        .apply()
+                }
+                saved
+            } else null
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to save profile: ${e.message}", e)
+            null
+        }
+    }
+
+    suspend fun saveBrandingToServer(context: android.content.Context, branding: com.example.data.network.BrandingConfigDto): com.example.data.network.BrandingConfigDto? {
+        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) return null
+        val apiService = com.example.data.network.ApiClient.getApiService(context)
+        return try {
+            val response = apiService.saveBranding(branding)
+            if (response.isSuccessful && response.body()?.success == true) {
+                val saved = response.body()?.data
+                if (saved != null) {
+                    val prefs = context.getSharedPreferences("dairy_sync_prefs", android.content.Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("branding_system_name", saved.systemName)
+                        .putString("branding_bank_name", saved.bankName)
+                        .putString("branding_logo", saved.logo)
+                        .putString("branding_address", saved.address)
+                        .apply()
+                }
+                saved
+            } else null
+        } catch (e: Exception) {
+            android.util.Log.e("Repository", "Failed to save branding: ${e.message}", e)
             null
         }
     }

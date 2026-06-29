@@ -29,6 +29,13 @@ data class ProfileDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class ProfileSaveResponse(
+    val success: Boolean,
+    val error: String? = null,
+    val data: ProfileDto? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class UserDto(
     val id: String,
     val name: String,
@@ -124,6 +131,23 @@ data class PriceConfigDto(
     val resolvedUserName: String?
         get() = (userName ?: username ?: createdBy)?.trim()
 }
+
+@JsonClass(generateAdapter = true)
+data class BrandingConfigDto(
+    val bankName: String,
+    val systemName: String,
+    val logo: String,
+    val address: String,
+    val ownerUserId: String? = null,
+    val updatedAt: Long = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class BrandingSaveResponse(
+    val success: Boolean,
+    val error: String? = null,
+    val data: BrandingConfigDto? = null
+)
 
 @JsonClass(generateAdapter = true)
 data class InventoryDto(
