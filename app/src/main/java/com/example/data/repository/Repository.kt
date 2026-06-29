@@ -31,6 +31,8 @@ class Repository(
     private val priceDao: PriceDao,
     private val milkInventoryDao: MilkInventoryDao
 ) {
+    private fun normalizeUserName(userName: String?): String? = userName?.trim()?.takeIf { it.isNotBlank() }
+
     val customersFlow: Flow<List<CustomerEntity>> = customerDao.getAllCustomersFlow()
     val salesFlow: Flow<List<SaleEntity>> = saleDao.getAllSalesFlow()
     val pricesFlow: Flow<List<PriceConfigEntity>> = priceDao.getAllPricesFlow()
@@ -54,7 +56,7 @@ class Repository(
             customStocksRaw = customStocksRaw,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         milkInventoryDao.insertInventory(inventory)
     }
@@ -71,7 +73,7 @@ class Repository(
             qrPreference = qrPreference,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         customerDao.insertCustomer(customer)
     }
@@ -87,7 +89,7 @@ class Repository(
             isSynced = false,
             isDeleted = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         customerDao.insertCustomer(customer)
     }
@@ -122,7 +124,7 @@ class Repository(
             createdAt = createdAt,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         saleDao.insertSale(sale)
     }
@@ -152,7 +154,7 @@ class Repository(
                     currentPrice = newPrice,
                     isSynced = false,
                     updatedAt = System.currentTimeMillis(),
-                    userName = userName
+                    userName = normalizeUserName(userName)
                 )
             )
             priceDao.insertPriceLog(
@@ -171,7 +173,7 @@ class Repository(
     }
 
     suspend fun markSaleSynced(id: String) {
-        saleDao.markSaleSynced(id)
+        saleDao.markSaleSynced(id, System.currentTimeMillis())
     }
 
     suspend fun getUnsyncedCustomers(): List<CustomerEntity> {
@@ -189,6 +191,8 @@ class Repository(
         }
         val apiService = com.example.data.network.ApiClient.getApiService(context)
         return try {
+            var allSuccess = true
+
             // 1. Sync customers
             val unsyncedCustomers = customerDao.getUnsyncedCustomers()
             android.util.Log.d("Repository", "Syncing ${unsyncedCustomers.size} customers...")
@@ -199,7 +203,11 @@ class Repository(
                         customerDao.hardDeleteCustomer(customer.id)
                         android.util.Log.d("Repository", "Customer ${customer.id} deleted from server & locally.")
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync customer deletion ${customer.id}")
+                        allSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync customer deletion ${customer.id}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                        )
                     }
                 } else {
                     val dto = com.example.data.network.CustomerDto(
@@ -210,14 +218,18 @@ class Repository(
                         address = customer.address,
                         notes = customer.notes,
                         updatedAt = customer.updatedAt,
-                        userName = customer.userName
+                        userName = normalizeUserName(customer.userName)
                     )
                     val response = apiService.saveCustomer(dto)
                     if (response.isSuccessful && response.body()?.success == true) {
                         customerDao.markCustomerSynced(customer.id, System.currentTimeMillis())
                         android.util.Log.d("Repository", "Customer ${customer.id} synced successfully.")
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync customer ${customer.id}: ${response.errorBody()?.string()}")
+                        allSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync customer ${customer.id}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                        )
                     }
                 }
             }
@@ -232,7 +244,11 @@ class Repository(
                         saleDao.hardDeleteSale(sale.id)
                         android.util.Log.d("Repository", "Sale ${sale.id} deleted from server & locally.")
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync sale deletion ${sale.id}")
+                        allSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync sale deletion ${sale.id}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                        )
                     }
                 } else {
                     val dto = com.example.data.network.SaleDto(
@@ -248,14 +264,18 @@ class Repository(
                         location = sale.location,
                         createdAt = sale.createdAt,
                         updatedAt = sale.updatedAt,
-                        userName = sale.userName
+                        userName = normalizeUserName(sale.userName)
                     )
                     val response = apiService.saveSale(dto)
                     if (response.isSuccessful && response.body()?.success == true) {
                         saleDao.markSaleSynced(sale.id)
                         android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync sale ${sale.id}: ${response.errorBody()?.string()}")
+                        allSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync sale ${sale.id}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                        )
                     }
                 }
             }
@@ -268,13 +288,17 @@ class Repository(
                     "milkType" to price.milkType,
                     "newPrice" to price.currentPrice,
                     "updatedAt" to price.updatedAt,
-                    "userName" to (price.userName ?: "")
+                    "userName" to (normalizeUserName(price.userName) ?: "")
                 ))
                 if (response.isSuccessful && response.body()?.success == true) {
                     priceDao.markPriceSynced(price.milkType, System.currentTimeMillis())
                     android.util.Log.d("Repository", "Price config for ${price.milkType} synced successfully.")
                 } else {
-                    android.util.Log.e("Repository", "Failed to sync price for ${price.milkType}")
+                    allSuccess = false
+                    android.util.Log.e(
+                        "Repository",
+                        "Failed to sync price for ${price.milkType}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                    )
                 }
             }
 
@@ -290,17 +314,21 @@ class Repository(
                     a2Liters = inventory.a2Liters,
                     customStocksRaw = inventory.customStocksRaw,
                     updatedAt = inventory.updatedAt,
-                    userName = inventory.userName
+                    userName = normalizeUserName(inventory.userName)
                 )
                 val response = apiService.saveInventory(dto)
                 if (response.isSuccessful && response.body()?.success == true) {
                     milkInventoryDao.markInventorySynced(inventory.dateStr, System.currentTimeMillis())
                     android.util.Log.d("Repository", "Inventory for ${inventory.dateStr} synced successfully.")
                 } else {
-                    android.util.Log.e("Repository", "Failed to sync inventory for ${inventory.dateStr}")
+                    allSuccess = false
+                    android.util.Log.e(
+                        "Repository",
+                        "Failed to sync inventory for ${inventory.dateStr}: code=${response.code()} error=${response.errorBody()?.string()} body=${response.body()?.error}"
+                    )
                 }
             }
-            true
+            allSuccess
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Error during synchronization: ${e.message}", e)
             false
@@ -366,7 +394,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = cust.updatedAt ?: System.currentTimeMillis(),
-                                    userName = cust.resolvedUserName
+                                    userName = normalizeUserName(cust.resolvedUserName)
                                 )
                             )
                         }
@@ -406,7 +434,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
-                                    userName = local?.userName ?: sale.resolvedUserName
+                                    userName = local?.userName ?: normalizeUserName(sale.resolvedUserName)
                                 )
                             )
                         }
@@ -441,7 +469,7 @@ class Repository(
                                          currentPrice = price.currentPrice,
                                          isSynced = true,
                                          updatedAt = price.updatedAt ?: System.currentTimeMillis(),
-                                         userName = price.resolvedUserName
+                                         userName = normalizeUserName(price.resolvedUserName)
                                      )
                                  )
                              }
@@ -473,7 +501,7 @@ class Repository(
                                      customStocksRaw = inv.customStocksRaw,
                                      isSynced = true,
                                      updatedAt = inv.updatedAt ?: System.currentTimeMillis(),
-                                     userName = inv.resolvedUserName
+                                     userName = normalizeUserName(inv.resolvedUserName)
                                  )
                              )
                          }
