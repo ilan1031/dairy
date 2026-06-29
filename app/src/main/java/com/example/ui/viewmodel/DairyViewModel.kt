@@ -50,7 +50,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoggedIn = MutableStateFlow(sharedPrefs.getBoolean("is_logged_in", false))
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
-    private val _businessName = MutableStateFlow(sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy")
+    private val _businessName = MutableStateFlow(sharedPrefs.getString("branding_system_name", sharedPrefs.getString("business_name", "Ganga Premium Dairy") ?: "Ganga Premium Dairy") ?: "Ganga Premium Dairy")
     val businessName: StateFlow<String> = _businessName.asStateFlow()
 
     private val _ownerName = MutableStateFlow(sharedPrefs.getString("logged_in_user_name", sharedPrefs.getString("owner_name", "Arun Kumar")) ?: "Arun Kumar")
@@ -223,6 +223,57 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateBranding(systemName: String, bankName: String, logoUrl: String, address: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val brandingDto = com.example.data.network.BrandingConfigDto(
+                    systemName = systemName,
+                    bankName = bankName,
+                    logo = logoUrl,
+                    address = address,
+                    ownerUserId = null,
+                    updatedAt = System.currentTimeMillis()
+                )
+                val saved = repository.saveBrandingToServer(getApplication(), brandingDto)
+                if (saved != null) {
+                    sharedPrefs.edit()
+                        .putString("branding_system_name", saved.systemName)
+                        .putString("branding_bank_name", saved.bankName)
+                        .putString("branding_logo", saved.logo)
+                        .putString("branding_address", saved.address)
+                        .apply()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _brandingBankName.value = saved.bankName
+                        _brandingLogo.value = saved.logo
+                        _brandingAddress.value = saved.address
+                        _businessName.value = saved.systemName
+                        onComplete(true)
+                    }
+                } else {
+                    // Fallback to local save if server save failed
+                    sharedPrefs.edit()
+                        .putString("branding_system_name", systemName)
+                        .putString("branding_bank_name", bankName)
+                        .putString("branding_logo", logoUrl)
+                        .putString("branding_address", address)
+                        .apply()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        _brandingBankName.value = bankName
+                        _brandingLogo.value = logoUrl
+                        _brandingAddress.value = address
+                        _businessName.value = systemName
+                        onComplete(true)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(false)
+                }
             }
         }
     }

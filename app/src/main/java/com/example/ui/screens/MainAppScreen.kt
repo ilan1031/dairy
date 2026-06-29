@@ -68,6 +68,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val mobileNumber by viewModel.mobileNumber.collectAsState()
     val emailAddress by viewModel.emailAddress.collectAsState()
     val password by viewModel.password.collectAsState()
+    val brandingLogo by viewModel.brandingLogo.collectAsState()
+    val brandingBankName by viewModel.brandingBankName.collectAsState()
+    val brandingAddress by viewModel.brandingAddress.collectAsState()
 
     val signupTimestamp by viewModel.signupTimestamp.collectAsState()
     val isPaidApp by viewModel.isPaidApp.collectAsState()
@@ -701,8 +704,25 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                         isPaidApp = isPaidApp,
                         trialDaysRemaining = trialDaysRemaining,
                         currentLanguage = currentLanguage,
+                        brandingLogo = brandingLogo,
+                        brandingBankName = brandingBankName,
+                        brandingAddress = brandingAddress,
                         onLanguageToggleChange = { viewModel.setLanguage(it) },
                         onThemeToggleChange = { viewModel.setLightTheme(it) },
+                        onSaveBranding = { sysName, bName, logoUrl, addr ->
+                            if (!subCanUpdate) {
+                                permissionErrorMsg = "Your system administrator has restricted profile/branding update permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.updateBranding(sysName, bName, logoUrl, addr) { success ->
+                                    if (success) {
+                                        Toast.makeText(context, "System Branding Updated successfully!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "System Branding saved locally.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
                         onSaveProfile = { bn, on, mn, em, pw ->
                             if (!subCanUpdate) {
                                 permissionErrorMsg = "Your system administrator has restricted profile update permissions on this account."
@@ -6125,9 +6145,13 @@ fun SettingsTab(
     isPaidApp: Boolean,
     trialDaysRemaining: Long,
     currentLanguage: String,
+    brandingLogo: String,
+    brandingBankName: String,
+    brandingAddress: String,
     onLanguageToggleChange: (String) -> Unit,
     onThemeToggleChange: (Boolean) -> Unit,
     onSaveProfile: (String, String, String, String, String) -> Unit,
+    onSaveBranding: (String, String, String, String) -> Unit,
     onAddCustomer: (String, String, String) -> Unit,
     onDeleteCustomer: (String) -> Unit,
     onCommunityToggleChange: (Boolean) -> Unit,
@@ -6147,6 +6171,11 @@ fun SettingsTab(
     var mEmail by remember(email) { mutableStateOf(email) }
     var mPass by remember(password) { mutableStateOf(password) }
     var passVisible by remember { mutableStateOf(false) }
+
+    var brLogo by remember(brandingLogo) { mutableStateOf(brandingLogo) }
+    var brSystemName by remember(businessName) { mutableStateOf(businessName) }
+    var brBankName by remember(brandingBankName) { mutableStateOf(brandingBankName) }
+    var brAddress by remember(brandingAddress) { mutableStateOf(brandingAddress) }
 
     // Customer register setups
     var registerName by remember { mutableStateOf("") }
@@ -6353,6 +6382,66 @@ fun SettingsTab(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Update Profile".t(currentLanguage))
+                    }
+                }
+            }
+        }
+
+        // System Branding settings
+        item {
+            Text("System Branding".t(currentLanguage), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Depot logo, custom bank/department name & layout header titles".t(currentLanguage),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = brSystemName,
+                        onValueChange = { brSystemName = it },
+                        label = { Text("System Header / App Name".t(currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("branding_system_name_input"),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = brBankName,
+                        onValueChange = { brBankName = it },
+                        label = { Text("Custom Bank Name".t(currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("branding_bank_name_input"),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = brLogo,
+                        onValueChange = { brLogo = it },
+                        label = { Text("Depot Logo URL".t(currentLanguage)) },
+                        placeholder = { Text("Or Paste Logo URL".t(currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("branding_logo_url_input"),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = brAddress,
+                        onValueChange = { brAddress = it },
+                        label = { Text("Depot / Farm Address".t(currentLanguage)) },
+                        modifier = Modifier.fillMaxWidth().testTag("branding_address_input"),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { onSaveBranding(brSystemName, brBankName, brLogo, brAddress) },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
+                        modifier = Modifier.align(Alignment.End).testTag("save_branding_button"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Save branding settings?".t(currentLanguage))
                     }
                 }
             }
