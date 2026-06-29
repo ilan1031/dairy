@@ -11,7 +11,19 @@ import com.example.data.entity.SaleEntity
 import com.example.data.entity.MilkInventoryEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.UUID
+
+private fun parseDateStr(dateStr: String): Long? {
+    if (dateStr.isBlank()) return null
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        sdf.parse(dateStr)?.time
+    } catch (e: Exception) {
+        null
+    }
+}
 
 class Repository(
     private val customerDao: CustomerDao,
@@ -272,6 +284,7 @@ class Repository(
             for (inventory in unsyncedInventory) {
                 val dto = com.example.data.network.InventoryDto(
                     dateStr = inventory.dateStr,
+                    date = parseDateStr(inventory.dateStr),
                     cowLiters = inventory.cowLiters,
                     buffaloLiters = inventory.buffaloLiters,
                     a2Liters = inventory.a2Liters,
