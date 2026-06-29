@@ -169,6 +169,7 @@ data class InventoryDto(
 @JsonClass(generateAdapter = true)
 data class BootstrapData(
     val profile: ProfileDto? = null,
+    val brandingConfig: BrandingConfigDto? = null,
     val customers: List<CustomerDto>? = null,
     val sales: List<SaleDto>? = null,
     val priceConfigs: List<PriceConfigDto>? = null,

@@ -348,6 +348,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                         if (success) {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 refreshProfileFromPrefs()
+                                refreshBrandingFromPrefs()
                             }
                         }
                         android.util.Log.d("DairyViewModel", "Automatic startup sync completed. Success: $success")
@@ -529,6 +530,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 if (success) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         refreshProfileFromPrefs()
+                        refreshBrandingFromPrefs()
                     }
                 }
             } catch (e: Exception) {
@@ -582,6 +584,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Fetch bootstrap data
                     repository.bootstrapDataFromServer(context)
+                    
+                    // Refresh branding/profile after bootstrap
+                    refreshProfileFromPrefs()
+                    refreshBrandingFromPrefs()
                     
                     null
                 } else {
@@ -655,6 +661,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // Fetch bootstrap data
                 repository.bootstrapDataFromServer(context)
+                
+                // Refresh branding/profile after bootstrap
+                refreshProfileFromPrefs()
+                refreshBrandingFromPrefs()
                 
                 null
             } else {
