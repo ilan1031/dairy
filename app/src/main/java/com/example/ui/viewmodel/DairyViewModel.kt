@@ -10,6 +10,7 @@ import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
 import com.example.data.entity.MilkInventoryEntity
+import com.example.data.network.UserDto
 import com.example.data.repository.Repository
 import com.example.worker.SyncWorker
 import kotlinx.coroutines.Dispatchers
@@ -36,10 +37,30 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedUserFilter = MutableStateFlow("All")
     val selectedUserFilter: StateFlow<String> = _selectedUserFilter.asStateFlow()
 
-    fun setSelectedUserFilter(user: String) {
-        _selectedUserFilter.value = user
+    private val _selectedUserId = MutableStateFlow("all")
+    val selectedUserId: StateFlow<String> = _selectedUserId.asStateFlow()
+
+    fun setSelectedUserFilter(userId: String?, label: String) {
+        _selectedUserFilter.value = label
+        _selectedUserId.value = userId ?: "all"
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncing.value = true
+            repository.bootstrapDataFromServer(getApplication(), _selectedUserId.value)
+            _isSyncing.value = false
+        }
     }
 
+    fun setSelectedUserFilter(label: String) {
+        if (label == "All") {
+            setSelectedUserFilter(null, "All")
+        } else {
+            // Look up the user ID from the users list
+            val userId = users.value.find { it.name == label }?.id
+            setSelectedUserFilter(userId, label)
+        }
+    }
+
+    val users: StateFlow<List<UserDto>>
     val allUserNames: StateFlow<List<String>>
 
     private val _isSyncing = MutableStateFlow(false)
@@ -244,7 +265,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 // refresh subscription + bootstrap
                 repository.checkSubscriptionFromServer(getApplication())
-                repository.bootstrapDataFromServer(getApplication())
+                repository.bootstrapDataFromServer(getApplication(), selectedUserId.value)
                 // update prefs-backed flows on main
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     refreshSubscriptionState()
@@ -286,19 +307,18 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             milkInventoryDao = database.milkInventoryDao()
         )
 
-        allUserNames = combine(
-            repository.customersFlow,
-            repository.salesFlow,
-            repository.pricesFlow,
-            repository.inventoryFlow
-        ) { custs, sls, prcs, invs ->
-            val names = mutableSetOf<String>()
-            custs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
-            sls.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
-            prcs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
-            invs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
-            names.sorted()
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        users = repository.usersFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        allUserNames = repository.usersFlow
+            .map { userList ->
+                userList
+                    .map { it.name?.trim() }
+                    .filter { !it.isNullOrBlank() }
+                    .distinct()
+                    .sorted()
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
         // Expose flows with StateIn for lifecycle-aware compose collection
         customers = repository.customersFlow
@@ -342,8 +362,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                         // 2. Fetch and update the latest subscription status
                         repository.checkSubscriptionFromServer(application)
                         refreshSubscriptionState()
-                        // 3. Bootstrap all latest data from backend server (Customers, Sales, Inventory, Prices)
-                        val success = repository.bootstrapDataFromServer(application)
+                        // 3. Bootstrap all latest data from backend server (Customers, Sales, Inventory, Prices, Users)
+                        val success = repository.bootstrapDataFromServer(application, selectedUserId.value)
                         if (success) {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 refreshProfileFromPrefs()
@@ -525,7 +545,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 repository.checkSubscriptionFromServer(getApplication())
                 refreshSubscriptionState()
                 // Perform real download bootstrap sync
-                val success = repository.bootstrapDataFromServer(getApplication())
+                val success = repository.bootstrapDataFromServer(getApplication(), selectedUserId.value)
                 if (success) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         refreshProfileFromPrefs()
@@ -582,7 +602,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     refreshSubscriptionState()
                     
                     // Fetch bootstrap data
-                    repository.bootstrapDataFromServer(context)
+                    repository.bootstrapDataFromServer(context, selectedUserId.value)
                     
                     // Refresh branding/profile after bootstrap
                     refreshProfileFromPrefs()
@@ -659,7 +679,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 refreshSubscriptionState()
                 
                 // Fetch bootstrap data
-                repository.bootstrapDataFromServer(context)
+                repository.bootstrapDataFromServer(context, selectedUserId.value)
                 
                 // Refresh branding/profile after bootstrap
                 refreshProfileFromPrefs()

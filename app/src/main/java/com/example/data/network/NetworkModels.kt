@@ -177,7 +177,8 @@ data class BootstrapData(
     val customers: List<CustomerDto>? = null,
     val sales: List<SaleDto>? = null,
     val priceConfigs: List<PriceConfigDto>? = null,
-    val inventory: List<InventoryDto>? = null
+    val inventory: List<InventoryDto>? = null,
+    val users: List<UserDto>? = null
 )
 
 @JsonClass(generateAdapter = true)
