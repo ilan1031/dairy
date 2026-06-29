@@ -31,6 +31,8 @@ class Repository(
     private val priceDao: PriceDao,
     private val milkInventoryDao: MilkInventoryDao
 ) {
+    private fun normalizeUserName(userName: String?): String? = userName?.trim()?.takeIf { it.isNotBlank() }
+
     val customersFlow: Flow<List<CustomerEntity>> = customerDao.getAllCustomersFlow()
     val salesFlow: Flow<List<SaleEntity>> = saleDao.getAllSalesFlow()
     val pricesFlow: Flow<List<PriceConfigEntity>> = priceDao.getAllPricesFlow()
@@ -54,7 +56,7 @@ class Repository(
             customStocksRaw = customStocksRaw,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         milkInventoryDao.insertInventory(inventory)
     }
@@ -71,7 +73,7 @@ class Repository(
             qrPreference = qrPreference,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         customerDao.insertCustomer(customer)
     }
@@ -87,7 +89,7 @@ class Repository(
             isSynced = false,
             isDeleted = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         customerDao.insertCustomer(customer)
     }
@@ -122,7 +124,7 @@ class Repository(
             createdAt = createdAt,
             isSynced = false,
             updatedAt = System.currentTimeMillis(),
-            userName = userName
+            userName = normalizeUserName(userName)
         )
         saleDao.insertSale(sale)
     }
@@ -152,7 +154,7 @@ class Repository(
                     currentPrice = newPrice,
                     isSynced = false,
                     updatedAt = System.currentTimeMillis(),
-                    userName = userName
+                    userName = normalizeUserName(userName)
                 )
             )
             priceDao.insertPriceLog(
@@ -366,7 +368,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = cust.updatedAt ?: System.currentTimeMillis(),
-                                    userName = cust.resolvedUserName
+                                    userName = normalizeUserName(cust.resolvedUserName)
                                 )
                             )
                         }
@@ -406,7 +408,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
-                                    userName = local?.userName ?: sale.resolvedUserName
+                                    userName = normalizeUserName(local?.userName) ?: normalizeUserName(sale.resolvedUserName)
                                 )
                             )
                         }
@@ -441,7 +443,7 @@ class Repository(
                                          currentPrice = price.currentPrice,
                                          isSynced = true,
                                          updatedAt = price.updatedAt ?: System.currentTimeMillis(),
-                                         userName = price.resolvedUserName
+                                         userName = normalizeUserName(price.resolvedUserName)
                                      )
                                  )
                              }
@@ -473,7 +475,7 @@ class Repository(
                                      customStocksRaw = inv.customStocksRaw,
                                      isSynced = true,
                                      updatedAt = inv.updatedAt ?: System.currentTimeMillis(),
-                                     userName = inv.resolvedUserName
+                                     userName = normalizeUserName(inv.resolvedUserName)
                                  )
                              )
                          }

@@ -294,10 +294,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             _ownerName
         ) { custs, sls, prcs, invs, owner ->
             val names = mutableSetOf<String>()
-            custs.forEach { names.add(it.userName ?: owner) }
-            sls.forEach { names.add(it.userName ?: owner) }
-            prcs.forEach { names.add(it.userName ?: owner) }
-            invs.forEach { names.add(it.userName ?: owner) }
+            custs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
+            sls.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
+            prcs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
+            invs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
             names.filter { it.isNotBlank() }.sorted()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

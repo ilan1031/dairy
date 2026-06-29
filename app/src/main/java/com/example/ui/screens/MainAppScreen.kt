@@ -157,22 +157,34 @@ fun MainAppScreen(viewModel: DairyViewModel) {
 
     val filteredSales = remember(sales, selectedUserFilter, ownerName) {
         if (selectedUserFilter == "All") sales
-        else sales.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+        else sales.filter {
+            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+            user == selectedUserFilter
+        }
     }
 
     val filteredCustomers = remember(customers, selectedUserFilter, ownerName) {
         if (selectedUserFilter == "All") customers
-        else customers.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+        else customers.filter {
+            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+            user == selectedUserFilter
+        }
     }
 
     val filteredPrices = remember(prices, selectedUserFilter, ownerName) {
         if (selectedUserFilter == "All") prices
-        else prices.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+        else prices.filter {
+            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+            user == selectedUserFilter
+        }
     }
 
     val filteredInventories = remember(inventories, selectedUserFilter, ownerName) {
         if (selectedUserFilter == "All") inventories
-        else inventories.filter { (it.userName ?: ownerName).ifBlank { ownerName } == selectedUserFilter }
+        else inventories.filter {
+            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+            user == selectedUserFilter
+        }
     }
 
     val displayTotalPending = remember(filteredSales) {
@@ -1872,7 +1884,7 @@ fun DashboardTab(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = (sale.userName ?: ownerName).ifBlank { ownerName },
+                                        text = sale.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = PrimaryMilk,
                                         fontWeight = FontWeight.SemiBold
@@ -4227,7 +4239,7 @@ fun BillsTab(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = (item.userName ?: ownerName).ifBlank { ownerName },
+                                    text = item.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = PrimaryMilk,
                                     fontWeight = FontWeight.SemiBold
@@ -6006,7 +6018,7 @@ fun ReportsTab(
                                 Column(modifier = Modifier.weight(1.5f)) {
                                     Text(item.customerName, style = MaterialTheme.typography.bodyMedium, overflow = TextOverflow.Ellipsis, maxLines = 1)
                                     Text(
-                                        text = "By: ${(item.userName ?: ownerName).ifBlank { ownerName }}",
+                                        text = "By: ${item.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.Gray,
                                         overflow = TextOverflow.Ellipsis,
@@ -7795,7 +7807,7 @@ fun CustomersTab(
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    text = (customer.userName ?: ownerName).ifBlank { ownerName },
+                                                    text = customer.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = PrimaryMilk,
                                                     fontWeight = FontWeight.SemiBold
@@ -8349,7 +8361,7 @@ fun CustomerProfileView(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = (sale.userName ?: ownerName).ifBlank { ownerName },
+                                            text = sale.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
                                             style = MaterialTheme.typography.labelSmall,
                                             color = PrimaryMilk,
                                             fontWeight = FontWeight.SemiBold

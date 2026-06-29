@@ -94,7 +94,8 @@ data class CustomerDto(
     val createdBy: String? = null
 ) {
     val resolvedUserName: String?
-        get() = (userName ?: username ?: createdBy)?.trim()
+        get() = listOf(userName, username, createdBy)
+            .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
 }
 
 @JsonClass(generateAdapter = true)
@@ -116,7 +117,8 @@ data class SaleDto(
     val createdBy: String? = null
 ) {
     val resolvedUserName: String?
-        get() = (userName ?: username ?: createdBy)?.trim()
+        get() = listOf(userName, username, createdBy)
+            .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
 }
 
 @JsonClass(generateAdapter = true)
@@ -129,7 +131,8 @@ data class PriceConfigDto(
     val createdBy: String? = null
 ) {
     val resolvedUserName: String?
-        get() = (userName ?: username ?: createdBy)?.trim()
+        get() = listOf(userName, username, createdBy)
+            .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
 }
 
 @JsonClass(generateAdapter = true)
@@ -163,7 +166,8 @@ data class InventoryDto(
     val createdBy: String? = null
 ) {
     val resolvedUserName: String?
-        get() = (userName ?: username ?: createdBy)?.trim()
+        get() = listOf(userName, username, createdBy)
+            .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
 }
 
 @JsonClass(generateAdapter = true)
