@@ -128,6 +128,7 @@ data class PriceConfigDto(
 @JsonClass(generateAdapter = true)
 data class InventoryDto(
     val dateStr: String,
+    val date: Long? = null,
     val cowLiters: Double,
     val buffaloLiters: Double,
     val a2Liters: Double,
