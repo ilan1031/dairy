@@ -171,7 +171,7 @@ class Repository(
     }
 
     suspend fun markSaleSynced(id: String) {
-        saleDao.markSaleSynced(id)
+        saleDao.markSaleSynced(id, System.currentTimeMillis())
     }
 
     suspend fun getUnsyncedCustomers(): List<CustomerEntity> {
@@ -189,36 +189,51 @@ class Repository(
         }
         val apiService = com.example.data.network.ApiClient.getApiService(context)
         return try {
+            var overallSuccess = true
+
             // 1. Sync customers
             val unsyncedCustomers = customerDao.getUnsyncedCustomers()
             android.util.Log.d("Repository", "Syncing ${unsyncedCustomers.size} customers...")
             for (customer in unsyncedCustomers) {
-                if (customer.isDeleted) {
-                    val response = apiService.deleteCustomer(mapOf("id" to customer.id))
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        customerDao.hardDeleteCustomer(customer.id)
-                        android.util.Log.d("Repository", "Customer ${customer.id} deleted from server & locally.")
+                try {
+                    if (customer.isDeleted) {
+                        val response = apiService.deleteCustomer(mapOf("id" to customer.id))
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            customerDao.hardDeleteCustomer(customer.id)
+                            android.util.Log.d("Repository", "Customer ${customer.id} deleted from server & locally.")
+                        } else {
+                            overallSuccess = false
+                            android.util.Log.e(
+                                "Repository",
+                                "Failed to sync customer deletion ${customer.id}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                            )
+                        }
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync customer deletion ${customer.id}")
+                        val dto = com.example.data.network.CustomerDto(
+                            id = customer.id,
+                            name = customer.name,
+                            phone = customer.phone,
+                            qrPreference = customer.qrPreference,
+                            address = customer.address,
+                            notes = customer.notes,
+                            updatedAt = customer.updatedAt,
+                            userName = customer.userName
+                        )
+                        val response = apiService.saveCustomer(dto)
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            customerDao.markCustomerSynced(customer.id, System.currentTimeMillis())
+                            android.util.Log.d("Repository", "Customer ${customer.id} synced successfully.")
+                        } else {
+                            overallSuccess = false
+                            android.util.Log.e(
+                                "Repository",
+                                "Failed to sync customer ${customer.id}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                            )
+                        }
                     }
-                } else {
-                    val dto = com.example.data.network.CustomerDto(
-                        id = customer.id,
-                        name = customer.name,
-                        phone = customer.phone,
-                        qrPreference = customer.qrPreference,
-                        address = customer.address,
-                        notes = customer.notes,
-                        updatedAt = customer.updatedAt,
-                        userName = customer.userName
-                    )
-                    val response = apiService.saveCustomer(dto)
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        customerDao.markCustomerSynced(customer.id, System.currentTimeMillis())
-                        android.util.Log.d("Repository", "Customer ${customer.id} synced successfully.")
-                    } else {
-                        android.util.Log.e("Repository", "Failed to sync customer ${customer.id}: ${response.errorBody()?.string()}")
-                    }
+                } catch (e: Exception) {
+                    overallSuccess = false
+                    android.util.Log.e("Repository", "Exception syncing customer ${customer.id}: ${e.message}", e)
                 }
             }
 
@@ -226,37 +241,50 @@ class Repository(
             val unsyncedSales = saleDao.getUnsyncedSales()
             android.util.Log.d("Repository", "Syncing ${unsyncedSales.size} sales...")
             for (sale in unsyncedSales) {
-                if (sale.isDeleted) {
-                    val response = apiService.deleteSale(mapOf("id" to sale.id))
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        saleDao.hardDeleteSale(sale.id)
-                        android.util.Log.d("Repository", "Sale ${sale.id} deleted from server & locally.")
+                try {
+                    if (sale.isDeleted) {
+                        val response = apiService.deleteSale(mapOf("id" to sale.id))
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            saleDao.hardDeleteSale(sale.id)
+                            android.util.Log.d("Repository", "Sale ${sale.id} deleted from server & locally.")
+                        } else {
+                            overallSuccess = false
+                            android.util.Log.e(
+                                "Repository",
+                                "Failed to sync sale deletion ${sale.id}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                            )
+                        }
                     } else {
-                        android.util.Log.e("Repository", "Failed to sync sale deletion ${sale.id}")
+                        val dto = com.example.data.network.SaleDto(
+                            id = sale.id,
+                            customerId = sale.customerId,
+                            customerName = sale.customerName,
+                            milkType = sale.milkType,
+                            liters = sale.liters,
+                            ratePerLiter = sale.ratePerLiter,
+                            totalAmount = sale.totalAmount,
+                            paymentStatus = sale.paymentStatus,
+                            paymentType = sale.paymentType,
+                            location = sale.location,
+                            createdAt = sale.createdAt,
+                            updatedAt = sale.updatedAt,
+                            userName = sale.userName
+                        )
+                        val response = apiService.saveSale(dto)
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            saleDao.markSaleSynced(sale.id, System.currentTimeMillis())
+                            android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
+                        } else {
+                            overallSuccess = false
+                            android.util.Log.e(
+                                "Repository",
+                                "Failed to sync sale ${sale.id}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                            )
+                        }
                     }
-                } else {
-                    val dto = com.example.data.network.SaleDto(
-                        id = sale.id,
-                        customerId = sale.customerId,
-                        customerName = sale.customerName,
-                        milkType = sale.milkType,
-                        liters = sale.liters,
-                        ratePerLiter = sale.ratePerLiter,
-                        totalAmount = sale.totalAmount,
-                        paymentStatus = sale.paymentStatus,
-                        paymentType = sale.paymentType,
-                        location = sale.location,
-                        createdAt = sale.createdAt,
-                        updatedAt = sale.updatedAt,
-                        userName = sale.userName
-                    )
-                    val response = apiService.saveSale(dto)
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        saleDao.markSaleSynced(sale.id)
-                        android.util.Log.d("Repository", "Sale ${sale.id} synced successfully.")
-                    } else {
-                        android.util.Log.e("Repository", "Failed to sync sale ${sale.id}: ${response.errorBody()?.string()}")
-                    }
+                } catch (e: Exception) {
+                    overallSuccess = false
+                    android.util.Log.e("Repository", "Exception syncing sale ${sale.id}: ${e.message}", e)
                 }
             }
 
@@ -264,17 +292,26 @@ class Repository(
             val unsyncedPrices = priceDao.getUnsyncedPrices()
             android.util.Log.d("Repository", "Syncing ${unsyncedPrices.size} prices...")
             for (price in unsyncedPrices) {
-                val response = apiService.savePrice(mapOf(
-                    "milkType" to price.milkType,
-                    "newPrice" to price.currentPrice,
-                    "updatedAt" to price.updatedAt,
-                    "userName" to (price.userName ?: "")
-                ))
-                if (response.isSuccessful && response.body()?.success == true) {
-                    priceDao.markPriceSynced(price.milkType, System.currentTimeMillis())
-                    android.util.Log.d("Repository", "Price config for ${price.milkType} synced successfully.")
-                } else {
-                    android.util.Log.e("Repository", "Failed to sync price for ${price.milkType}")
+                try {
+                    val response = apiService.savePrice(mapOf(
+                        "milkType" to price.milkType,
+                        "newPrice" to price.currentPrice,
+                        "updatedAt" to price.updatedAt,
+                        "userName" to (price.userName ?: "")
+                    ))
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        priceDao.markPriceSynced(price.milkType, System.currentTimeMillis())
+                        android.util.Log.d("Repository", "Price config for ${price.milkType} synced successfully.")
+                    } else {
+                        overallSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync price for ${price.milkType}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    overallSuccess = false
+                    android.util.Log.e("Repository", "Exception syncing price ${price.milkType}: ${e.message}", e)
                 }
             }
 
@@ -282,25 +319,34 @@ class Repository(
             val unsyncedInventory = milkInventoryDao.getUnsyncedInventory()
             android.util.Log.d("Repository", "Syncing ${unsyncedInventory.size} inventory logs...")
             for (inventory in unsyncedInventory) {
-                val dto = com.example.data.network.InventoryDto(
-                    dateStr = inventory.dateStr,
-                    date = parseDateStr(inventory.dateStr),
-                    cowLiters = inventory.cowLiters,
-                    buffaloLiters = inventory.buffaloLiters,
-                    a2Liters = inventory.a2Liters,
-                    customStocksRaw = inventory.customStocksRaw,
-                    updatedAt = inventory.updatedAt,
-                    userName = inventory.userName
-                )
-                val response = apiService.saveInventory(dto)
-                if (response.isSuccessful && response.body()?.success == true) {
-                    milkInventoryDao.markInventorySynced(inventory.dateStr, System.currentTimeMillis())
-                    android.util.Log.d("Repository", "Inventory for ${inventory.dateStr} synced successfully.")
-                } else {
-                    android.util.Log.e("Repository", "Failed to sync inventory for ${inventory.dateStr}")
+                try {
+                    val dto = com.example.data.network.InventoryDto(
+                        dateStr = inventory.dateStr,
+                        date = parseDateStr(inventory.dateStr),
+                        cowLiters = inventory.cowLiters,
+                        buffaloLiters = inventory.buffaloLiters,
+                        a2Liters = inventory.a2Liters,
+                        customStocksRaw = inventory.customStocksRaw,
+                        updatedAt = inventory.updatedAt,
+                        userName = inventory.userName
+                    )
+                    val response = apiService.saveInventory(dto)
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        milkInventoryDao.markInventorySynced(inventory.dateStr, System.currentTimeMillis())
+                        android.util.Log.d("Repository", "Inventory for ${inventory.dateStr} synced successfully.")
+                    } else {
+                        overallSuccess = false
+                        android.util.Log.e(
+                            "Repository",
+                            "Failed to sync inventory for ${inventory.dateStr}. code=${response.code()} success=${response.body()?.success} error=${response.body()?.error} body=${response.errorBody()?.string()}"
+                        )
+                    }
+                } catch (e: Exception) {
+                    overallSuccess = false
+                    android.util.Log.e("Repository", "Exception syncing inventory ${inventory.dateStr}: ${e.message}", e)
                 }
             }
-            true
+            overallSuccess
         } catch (e: Exception) {
             android.util.Log.e("Repository", "Error during synchronization: ${e.message}", e)
             false

@@ -55,8 +55,8 @@ interface SaleDao {
     @Query("UPDATE sales SET paymentStatus = :status, paymentType = :paymentType, isSynced = 0, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updatePaymentStatus(id: String, status: String, paymentType: String, updatedAt: Long)
 
-    @Query("UPDATE sales SET isSynced = 1 WHERE id = :id")
-    suspend fun markSaleSynced(id: String)
+    @Query("UPDATE sales SET isSynced = 1, updatedAt = :syncTime WHERE id = :id")
+    suspend fun markSaleSynced(id: String, syncTime: Long)
 
     @Query("SELECT SUM(totalAmount) FROM sales WHERE paymentStatus = 'PENDING' AND isDeleted = 0")
     fun getTotalPendingAmountFlow(): Flow<Double?>

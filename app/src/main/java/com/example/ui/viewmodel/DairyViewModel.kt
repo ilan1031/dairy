@@ -757,7 +757,9 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun triggerAutoSync() {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.syncUnsyncedData(getApplication())
+            android.util.Log.d("DairyViewModel", "triggerAutoSync called")
+            val success = repository.syncUnsyncedData(getApplication())
+            android.util.Log.d("DairyViewModel", "triggerAutoSync completed: $success")
         }
     }
 
