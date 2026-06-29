@@ -290,15 +290,14 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             repository.customersFlow,
             repository.salesFlow,
             repository.pricesFlow,
-            repository.inventoryFlow,
-            _ownerName
-        ) { custs, sls, prcs, invs, owner ->
+            repository.inventoryFlow
+        ) { custs, sls, prcs, invs ->
             val names = mutableSetOf<String>()
-            custs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            sls.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            prcs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            invs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
-            names.filter { it.isNotBlank() }.sorted()
+            custs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
+            sls.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
+            prcs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
+            invs.forEach { it.userName?.trim()?.takeIf { it.isNotBlank() }?.let { names.add(it) } }
+            names.sorted()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
         // Expose flows with StateIn for lifecycle-aware compose collection

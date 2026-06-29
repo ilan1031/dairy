@@ -155,34 +155,34 @@ fun MainAppScreen(viewModel: DairyViewModel) {
     val selectedUserFilter by viewModel.selectedUserFilter.collectAsState()
     val allUserNames by viewModel.allUserNames.collectAsState()
 
-    val filteredSales = remember(sales, selectedUserFilter, ownerName) {
+    val filteredSales = remember(sales, selectedUserFilter) {
         if (selectedUserFilter == "All") sales
-        else sales.filter {
-            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+        else sales.filter { sale ->
+            val user = sale.userName?.trim()?.takeIf { it.isNotBlank() }
             user == selectedUserFilter
         }
     }
 
-    val filteredCustomers = remember(customers, selectedUserFilter, ownerName) {
+    val filteredCustomers = remember(customers, selectedUserFilter) {
         if (selectedUserFilter == "All") customers
-        else customers.filter {
-            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+        else customers.filter { customer ->
+            val user = customer.userName?.trim()?.takeIf { it.isNotBlank() }
             user == selectedUserFilter
         }
     }
 
-    val filteredPrices = remember(prices, selectedUserFilter, ownerName) {
+    val filteredPrices = remember(prices, selectedUserFilter) {
         if (selectedUserFilter == "All") prices
-        else prices.filter {
-            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+        else prices.filter { price ->
+            val user = price.userName?.trim()?.takeIf { it.isNotBlank() }
             user == selectedUserFilter
         }
     }
 
-    val filteredInventories = remember(inventories, selectedUserFilter, ownerName) {
+    val filteredInventories = remember(inventories, selectedUserFilter) {
         if (selectedUserFilter == "All") inventories
-        else inventories.filter {
-            val user = it.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+        else inventories.filter { inventory ->
+            val user = inventory.userName?.trim()?.takeIf { it.isNotBlank() }
             user == selectedUserFilter
         }
     }
@@ -4239,7 +4239,7 @@ fun BillsTab(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = item.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
+                                    text = item.userName?.trim()?.takeIf { it.isNotBlank() } ?: "Unknown",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = PrimaryMilk,
                                     fontWeight = FontWeight.SemiBold
@@ -6018,7 +6018,7 @@ fun ReportsTab(
                                 Column(modifier = Modifier.weight(1.5f)) {
                                     Text(item.customerName, style = MaterialTheme.typography.bodyMedium, overflow = TextOverflow.Ellipsis, maxLines = 1)
                                     Text(
-                                        text = "By: ${item.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName}",
+                                        text = "By: ${item.userName?.trim()?.takeIf { it.isNotBlank() } ?: "Unknown"}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.Gray,
                                         overflow = TextOverflow.Ellipsis,
@@ -7807,7 +7807,7 @@ fun CustomersTab(
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    text = customer.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
+                                                    text = customer.userName?.trim()?.takeIf { it.isNotBlank() } ?: "Unknown",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = PrimaryMilk,
                                                     fontWeight = FontWeight.SemiBold
@@ -8361,7 +8361,7 @@ fun CustomerProfileView(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = sale.userName?.trim()?.takeIf { it.isNotBlank() } ?: ownerName,
+                                            text = sale.userName?.trim()?.takeIf { it.isNotBlank() } ?: "Unknown",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = PrimaryMilk,
                                             fontWeight = FontWeight.SemiBold
