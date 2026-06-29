@@ -294,10 +294,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             _ownerName
         ) { custs, sls, prcs, invs, owner ->
             val names = mutableSetOf<String>()
-            custs.forEach { names.add(it.userName?.takeIf { it.isNotBlank() } ?: owner) }
-            sls.forEach { names.add(it.userName?.takeIf { it.isNotBlank() } ?: owner) }
-            prcs.forEach { names.add(it.userName?.takeIf { it.isNotBlank() } ?: owner) }
-            invs.forEach { names.add(it.userName?.takeIf { it.isNotBlank() } ?: owner) }
+            custs.forEach { names.add(it.userName ?: owner) }
+            sls.forEach { names.add(it.userName ?: owner) }
+            prcs.forEach { names.add(it.userName ?: owner) }
+            invs.forEach { names.add(it.userName ?: owner) }
             names.filter { it.isNotBlank() }.sorted()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -757,15 +757,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun triggerAutoSync() {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _isSyncing.value = true
-                val success = repository.syncUnsyncedData(getApplication())
-                android.util.Log.d("DairyViewModel", "triggerAutoSync completed: success=$success")
-            } catch (e: Exception) {
-                android.util.Log.e("DairyViewModel", "triggerAutoSync failed", e)
-            } finally {
-                _isSyncing.value = false
-            }
+            repository.syncUnsyncedData(getApplication())
         }
     }
 
