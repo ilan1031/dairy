@@ -736,7 +736,13 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             viewModel.addNewMilkCategory(name, initialPrice)
                         },
                         onSaveInventoryStock = { cow, buffalo, a2, dateStr, rawCustom ->
-                            viewModel.saveMilkInventory(cow, buffalo, a2, dateStr, rawCustom)
+                            if (!subCanCreate) {
+                                permissionErrorMsg = "Your system administrator has restricted inventory creation permissions on this account."
+                                showPermissionErrorDialog = true
+                            } else {
+                                viewModel.saveMilkInventory(cow, buffalo, a2, dateStr, rawCustom)
+                                showSuccessSavedToast = true
+                            }
                         },
                         onUpdatePrice = { brand, price ->
                             viewModel.updatePrice(brand, price)
