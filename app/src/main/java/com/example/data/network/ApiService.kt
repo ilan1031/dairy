@@ -21,9 +21,6 @@ interface ApiService {
     @POST("data/bootstrap")
     suspend fun bootstrap(@Body request: Map<String, String>): Response<BootstrapResponse>
 
-    @POST("data/users/list")
-    suspend fun listUsers(@Body request: Map<String, String>): Response<UsersListResponse>
-
     @POST("data/customers/save")
     suspend fun saveCustomer(@Body request: CustomerDto): Response<CustomerSaveResponse>
 

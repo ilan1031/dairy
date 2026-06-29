@@ -10,7 +10,6 @@ import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
 import com.example.data.entity.MilkInventoryEntity
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -39,9 +38,6 @@ class Repository(
     val pricesFlow: Flow<List<PriceConfigEntity>> = priceDao.getAllPricesFlow()
     val priceLogsFlow: Flow<List<PriceLogEntity>> = priceDao.getAllPriceLogsFlow()
     val inventoryFlow: Flow<List<MilkInventoryEntity>> = milkInventoryDao.getAllInventoryFlow()
-
-    private val _usersFlow = MutableStateFlow<List<UserDto>>(emptyList())
-    val usersFlow: Flow<List<UserDto>> = _usersFlow
 
     val totalPendingFlow: Flow<Double?> = saleDao.getTotalPendingAmountFlow()
     val totalCollectedFlow: Flow<Double?> = saleDao.getTotalCollectedAmountFlow()
@@ -355,11 +351,6 @@ class Repository(
                             .apply()
                     }
                     
-                    // Save users list from BE bootstrap only if it represents the full list (e.g. selectedUserId is null/all/empty)
-                    if (selectedUserId == null || selectedUserId == "all" || selectedUserId.isEmpty()) {
-                        _usersFlow.value = data.users ?: emptyList()
-                    }
-
                     // 1. Customers
                     val customers = data.customers ?: emptyList()
                     android.util.Log.d("Repository", "Bootstrap: Received ${customers.size} customers")
@@ -599,43 +590,15 @@ class Repository(
     }
 
     suspend fun clearAllLocalData(context: android.content.Context, seedDefaults: Boolean = true) {
-        try {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val db = com.example.data.database.AppDatabase.getDatabase(context, kotlinx.coroutines.GlobalScope)
-                db.clearAllTables()
-                if (seedDefaults) {
-                    val priceDao = db.priceDao()
-                    priceDao.insertPriceConfig(PriceConfigEntity("Cow Milk", 50.0, isSynced = true))
-                    priceDao.insertPriceConfig(PriceConfigEntity("Buffalo Milk", 70.0, isSynced = true))
-                    priceDao.insertPriceConfig(PriceConfigEntity("A2 Milk", 90.0, isSynced = true))
-                }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val db = com.example.data.database.AppDatabase.getDatabase(context, kotlinx.coroutines.GlobalScope)
+            db.clearAllTables()
+            if (seedDefaults) {
+                val priceDao = db.priceDao()
+                priceDao.insertPriceConfig(PriceConfigEntity("Cow Milk", 50.0, isSynced = true))
+                priceDao.insertPriceConfig(PriceConfigEntity("Buffalo Milk", 70.0, isSynced = true))
+                priceDao.insertPriceConfig(PriceConfigEntity("A2 Milk", 90.0, isSynced = true))
             }
-        } catch (e: Exception) {
-            android.util.Log.e("Repository", "Failed to clear all local data: ${e.message}", e)
-        }
-    }
-
-    suspend fun fetchUsersFromServer(context: android.content.Context, selectedUserId: String? = null): List<UserDto> {
-        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
-            android.util.Log.d("Repository", "Skipping user list fetch: internet not available")
-            return _usersFlow.value
-        }
-
-        val apiService = com.example.data.network.ApiClient.getApiService(context)
-        return try {
-            val reqBody = if (selectedUserId != null) mapOf("selectedUserId" to selectedUserId) else emptyMap()
-            val response = apiService.listUsers(reqBody)
-            if (response.isSuccessful) {
-                val users = response.body()?.data.orEmpty()
-                _usersFlow.value = users
-                users
-            } else {
-                android.util.Log.e("Repository", "Failed to fetch users for filter: ${response.errorBody()?.string()}")
-                _usersFlow.value
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("Repository", "Failed to fetch users from server: ${e.message}", e)
-            _usersFlow.value
         }
     }
 }
