@@ -9,9 +9,7 @@ import com.example.data.entity.PriceConfigEntity
 import com.example.data.entity.PriceLogEntity
 import com.example.data.entity.SaleEntity
 import com.example.data.entity.MilkInventoryEntity
-import com.example.data.network.UserDto
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -40,9 +38,6 @@ class Repository(
     val pricesFlow: Flow<List<PriceConfigEntity>> = priceDao.getAllPricesFlow()
     val priceLogsFlow: Flow<List<PriceLogEntity>> = priceDao.getAllPriceLogsFlow()
     val inventoryFlow: Flow<List<MilkInventoryEntity>> = milkInventoryDao.getAllInventoryFlow()
-
-    private val _usersFlow = MutableStateFlow<List<UserDto>>(emptyList())
-    val usersFlow: Flow<List<UserDto>> = _usersFlow
 
     val totalPendingFlow: Flow<Double?> = saleDao.getTotalPendingAmountFlow()
     val totalCollectedFlow: Flow<Double?> = saleDao.getTotalCollectedAmountFlow()
@@ -355,9 +350,6 @@ class Repository(
                             .putString("branding_address", branding.address)
                             .apply()
                     }
-
-                    // Save users list from BE bootstrap
-                    _usersFlow.value = data.users ?: emptyList()
                     
                     // 1. Customers
                     val customers = data.customers ?: emptyList()
