@@ -601,27 +601,4 @@ class Repository(
             }
         }
     }
-
-    suspend fun fetchUsersListFromServer(context: android.content.Context): List<String> {
-        if (!com.example.data.network.NetworkHelper.isInternetAvailable(context)) {
-            android.util.Log.d("Repository", "No internet for user list fetch")
-            return emptyList()
-        }
-        val apiService = com.example.data.network.ApiClient.getApiService(context)
-        return try {
-            val response = apiService.listUsers(emptyMap())
-            if (response.isSuccessful && response.body()?.success == true) {
-                val users = response.body()?.data ?: emptyList()
-                android.util.Log.d("Repository", "Fetched ${users.size} users from backend")
-                users.mapNotNull { it.name?.trim()?.takeIf { s -> s.isNotBlank() } }
-                    .also { android.util.Log.d("Repository", "Processed users: $it") }
-            } else {
-                android.util.Log.d("Repository", "Failed to fetch users list: ${response.body()?.error}")
-                emptyList()
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("Repository", "Error fetching users list: ${e.message}", e)
-            emptyList()
-        }
-    }
 }
