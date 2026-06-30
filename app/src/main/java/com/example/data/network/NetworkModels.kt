@@ -91,11 +91,15 @@ data class CustomerDto(
     val updatedAt: Long? = null,
     val userName: String? = null,
     val username: String? = null,
-    val createdBy: String? = null
+    val createdBy: String? = null,
+    val ownerUserId: String? = null
 ) {
     val resolvedUserName: String?
         get() = listOf(userName, username, createdBy)
             .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
+
+    val resolvedUserId: String?
+        get() = ownerUserId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 @JsonClass(generateAdapter = true)
@@ -114,11 +118,15 @@ data class SaleDto(
     val updatedAt: Long? = null,
     val userName: String? = null,
     val username: String? = null,
-    val createdBy: String? = null
+    val createdBy: String? = null,
+    val ownerUserId: String? = null
 ) {
     val resolvedUserName: String?
         get() = listOf(userName, username, createdBy)
             .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
+
+    val resolvedUserId: String?
+        get() = ownerUserId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 @JsonClass(generateAdapter = true)
@@ -128,11 +136,15 @@ data class PriceConfigDto(
     val updatedAt: Long? = null,
     val userName: String? = null,
     val username: String? = null,
-    val createdBy: String? = null
+    val createdBy: String? = null,
+    val ownerUserId: String? = null
 ) {
     val resolvedUserName: String?
         get() = listOf(userName, username, createdBy)
             .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
+
+    val resolvedUserId: String?
+        get() = ownerUserId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 @JsonClass(generateAdapter = true)
@@ -163,11 +175,15 @@ data class InventoryDto(
     val updatedAt: Long? = null,
     val userName: String? = null,
     val username: String? = null,
-    val createdBy: String? = null
+    val createdBy: String? = null,
+    val ownerUserId: String? = null
 ) {
     val resolvedUserName: String?
         get() = listOf(userName, username, createdBy)
             .firstNotNullOfOrNull { it?.trim()?.takeIf { trimmed -> trimmed.isNotBlank() } }
+
+    val resolvedUserId: String?
+        get() = ownerUserId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 @JsonClass(generateAdapter = true)

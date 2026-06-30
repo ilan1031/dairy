@@ -293,8 +293,9 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshBrandingFromServer() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // refresh subscription + bootstrap
+                // refresh subscription + user list + bootstrap
                 repository.checkSubscriptionFromServer(getApplication())
+                repository.fetchUsersFromServer(getApplication(), selectedUserId.value)
                 repository.bootstrapDataFromServer(getApplication())
                 // update prefs-backed flows on main
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -622,24 +623,51 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     _emailAddress.value = emailVal
                     _password.value = passwordVal
                     
-                    // Migrate pre-existing offline data first
-                    repository.syncUnsyncedData(context)
-                    schedulePeriodicWorkManagerSync()
-                    
-                    // Clear guest/default database and prepare for bootstrapped real data
-                    repository.clearAllLocalData(context, seedDefaults = true)
-                    
-                    // Fetch dynamic subscription status from server
-                    repository.checkSubscriptionFromServer(context)
-                    refreshSubscriptionState()
-                    
-                    // Fetch bootstrap data
-                    repository.bootstrapDataFromServer(context)
-                    
-                    // Refresh branding/profile after bootstrap
-                    refreshProfileFromPrefs()
-                    refreshBrandingFromPrefs()
-                    
+                    // Launch follow-up data sync after successful auth.
+                    viewModelScope.launch(Dispatchers.IO) {
+                        try {
+                            repository.syncUnsyncedData(context)
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Initial sync skipped after login: ${e.message}", e)
+                        }
+
+                        schedulePeriodicWorkManagerSync()
+
+                        try {
+                            repository.clearAllLocalData(context, seedDefaults = true)
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Failed to clear local data after login: ${e.message}", e)
+                        }
+
+                        try {
+                            repository.checkSubscriptionFromServer(context)
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Subscription check failed after login: ${e.message}", e)
+                        }
+                        refreshSubscriptionState()
+
+                        try {
+                            repository.fetchUsersFromServer(context, selectedUserId.value)
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Scoped user list fetch failed after login: ${e.message}", e)
+                        }
+
+                        try {
+                            repository.bootstrapDataFromServer(context, selectedUserId.value)
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Bootstrap failed after login: ${e.message}", e)
+                        }
+
+                        try {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                refreshProfileFromPrefs()
+                                refreshBrandingFromPrefs()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("DairyViewModel", "Profile/branding refresh failed after login: ${e.message}", e)
+                        }
+                    }
+
                     null
                 } else {
                     response.body()?.error ?: "Invalid email address or password"

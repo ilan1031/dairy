@@ -351,6 +351,13 @@ class Repository(
                             .apply()
                     }
                     
+                    // Save users list from BE bootstrap
+                    _usersFlow.value = data.users ?: emptyList()
+                    val userNameMap = data.users?.associate { it.id to it.name } ?: emptyMap()
+                    fun resolveName(ownerUserId: String?, fallback: String?): String? {
+                        return normalizeUserName(userNameMap[ownerUserId] ?: fallback)
+                    }
+
                     // 1. Customers
                     val customers = data.customers ?: emptyList()
                     android.util.Log.d("Repository", "Bootstrap: Received ${customers.size} customers")
@@ -408,7 +415,7 @@ class Repository(
                                     isSynced = true,
                                     isDeleted = false,
                                     updatedAt = sale.updatedAt ?: System.currentTimeMillis(),
-                                    userName = normalizeUserName(local?.userName) ?: normalizeUserName(sale.resolvedUserName)
+                                    userName = resolveName(sale.resolvedUserId, local?.userName ?: sale.resolvedUserName)
                                 )
                             )
                         }
@@ -443,7 +450,7 @@ class Repository(
                                          currentPrice = price.currentPrice,
                                          isSynced = true,
                                          updatedAt = price.updatedAt ?: System.currentTimeMillis(),
-                                         userName = normalizeUserName(price.resolvedUserName)
+                                         userName = resolveName(price.resolvedUserId, price.resolvedUserName)
                                      )
                                  )
                              }
@@ -475,7 +482,7 @@ class Repository(
                                      customStocksRaw = inv.customStocksRaw,
                                      isSynced = true,
                                      updatedAt = inv.updatedAt ?: System.currentTimeMillis(),
-                                     userName = normalizeUserName(inv.resolvedUserName)
+                                     userName = resolveName(inv.resolvedUserId, inv.resolvedUserName)
                                  )
                              )
                          }
