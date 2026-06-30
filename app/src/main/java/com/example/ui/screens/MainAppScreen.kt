@@ -670,7 +670,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                             }
                         },
                         businessName = businessName,
-                        ownerName = ownerName
+                        ownerName = ownerName,
+                        bankName = brandingBankName,
+                        address = brandingAddress
                     )
                     3 -> BillsTab(
                         sales = filteredSales,
@@ -855,7 +857,9 @@ fun MainAppScreen(viewModel: DairyViewModel) {
                                 viewModel.markAsPaid(id, mode)
                                 selectedInvoiceForDetail = null
                             }
-                        }
+                        },
+                        bankName = brandingBankName,
+                        address = brandingAddress
                     )
                 }
 
@@ -4306,7 +4310,15 @@ fun BillsTab(
 // ==========================================
 // EXPORT & SHARE REAL PDF HELPERS
 // ==========================================
-fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity, businessName: String, isShare: Boolean, whatsAppNumber: String? = null) {
+fun exportAndShareInvoicePdf(
+    context: android.content.Context,
+    sale: SaleEntity,
+    businessName: String,
+    isShare: Boolean,
+    whatsAppNumber: String? = null,
+    bankName: String = "",
+    address: String = ""
+) {
     try {
         val pdfDocument = android.graphics.pdf.PdfDocument()
         val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(400, 750, 1).create()
@@ -4332,22 +4344,31 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
         paint.color = android.graphics.Color.GRAY
         canvas.drawText("MILK PREMIUM BILL RECEIPT", 200f, 60f, paint)
 
+        var startY = 60f
+        if (address.isNotBlank()) {
+            paint.textSize = 9f
+            paint.isFakeBoldText = false
+            paint.color = android.graphics.Color.GRAY
+            canvas.drawText(address.uppercase(), 200f, 75f, paint)
+            startY = 75f
+        }
+
         // Barcode lines
         paint.color = android.graphics.Color.BLACK
         for (i in 0 until 35) {
             val startX = 60f + i * 8f
             val lineWidth = if (i % 3 == 0) 5f else if (i % 2 == 0) 2f else 1f
             paint.strokeWidth = lineWidth
-            canvas.drawLine(startX, 80f, startX, 105f, paint)
+            canvas.drawLine(startX, startY + 20f, startX, startY + 45f, paint)
         }
         paint.textAlign = android.graphics.Paint.Align.CENTER
         paint.textSize = 9f
-        canvas.drawText("ERP-BAR-${sale.id.uppercase().take(8)}", 200f, 120f, paint)
+        canvas.drawText("ERP-BAR-${sale.id.uppercase().take(8)}", 200f, startY + 60f, paint)
 
         // Divider
         paint.strokeWidth = 2f
         paint.color = android.graphics.Color.BLACK
-        canvas.drawLine(30f, 135f, 370f, 135f, paint)
+        canvas.drawLine(30f, startY + 75f, 370f, startY + 75f, paint)
 
         // Details
         val formatDate = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm a", java.util.Locale.getDefault())
@@ -4365,7 +4386,7 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
 
         paint.textAlign = android.graphics.Paint.Align.LEFT
         paint.textSize = 12f
-        var currentY = 165f
+        var currentY = startY + 105f
         for ((label, value) in details) {
             paint.isFakeBoldText = true
             paint.color = android.graphics.Color.DKGRAY
@@ -4394,6 +4415,14 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
         paint.isFakeBoldText = false
         paint.color = android.graphics.Color.GRAY
         canvas.drawText("Scan UPI pin below to Settle. Thank you!", 200f, currentY, paint)
+
+        if (bankName.isNotBlank()) {
+            currentY += 15f
+            paint.textSize = 9f
+            paint.isFakeBoldText = true
+            paint.color = android.graphics.Color.BLACK
+            canvas.drawText("Bank Account: $bankName", 200f, currentY, paint)
+        }
 
         // QR Code
         currentY += 20f
@@ -4494,7 +4523,14 @@ fun exportAndShareInvoicePdf(context: android.content.Context, sale: SaleEntity,
     }
 }
 
-fun shareSelectedSalesAsText(context: android.content.Context, sales: List<SaleEntity>, customerName: String, businessName: String) {
+fun shareSelectedSalesAsText(
+    context: android.content.Context,
+    sales: List<SaleEntity>,
+    customerName: String,
+    businessName: String,
+    bankName: String = "",
+    address: String = ""
+) {
     val sb = StringBuilder()
     sb.append("*$businessName - Statement*\n")
     sb.append("Customer: $customerName\n")
@@ -4516,6 +4552,17 @@ fun shareSelectedSalesAsText(context: android.content.Context, sales: List<SaleE
     sb.append("*Total Paid:* ₹${totalPaid.toInt()}\n")
     sb.append("*Total Pending:* ₹${totalPending.toInt()}\n")
     sb.append("*Grand Total:* ₹${totalAmt.toInt()}\n")
+    
+    if (bankName.isNotBlank() || address.isNotBlank()) {
+        sb.append("----------------------------\n")
+        if (bankName.isNotBlank()) {
+            sb.append("*Bank Details:* $bankName\n")
+        }
+        if (address.isNotBlank()) {
+            sb.append("*Address:* $address\n")
+        }
+    }
+
     sb.append("\nThank you for choosing us!")
 
     val sendIntent = android.content.Intent().apply {
@@ -4533,11 +4580,13 @@ fun exportAndShareSelectedSalesPdf(
     phoneNumber: String?,
     businessName: String,
     isShare: Boolean,
-    whatsAppNumber: String? = null
+    whatsAppNumber: String? = null,
+    bankName: String = "",
+    address: String = ""
 ) {
     try {
         val pdfDocument = android.graphics.pdf.PdfDocument()
-        val fileHeight = (320 + (salesList.size * 30)).coerceAtLeast(620).coerceAtMost(1200)
+        val fileHeight = (360 + (salesList.size * 30)).coerceAtLeast(660).coerceAtMost(1200)
         val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(450, fileHeight, 1).create()
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
@@ -4642,6 +4691,18 @@ fun exportAndShareSelectedSalesPdf(
         paint.color = 0xFF1E3A8A.toInt() // Navy
         paint.isFakeBoldText = true
         canvas.drawText("Total Sum: ₹${totalCost.toInt()}", 430f, currentY, paint)
+
+        if (bankName.isNotBlank() || address.isNotBlank()) {
+            currentY += 25f
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            paint.textSize = 8f
+            paint.color = 0xFF4B5563.toInt()
+            paint.isFakeBoldText = false
+            val textBuilder = StringBuilder()
+            if (bankName.isNotBlank()) textBuilder.append("Bank Details: $bankName  ")
+            if (address.isNotBlank()) textBuilder.append("Address: $address")
+            canvas.drawText(textBuilder.toString(), 225f, currentY, paint)
+        }
 
         currentY += 40f
         paint.textAlign = android.graphics.Paint.Align.CENTER
@@ -4780,7 +4841,9 @@ fun InvoiceDetailDialog(
     businessName: String,
     onDismiss: () -> Unit,
     onMarkAsPaid: ((String, String) -> Unit)? = null,
-    whatsAppNumber: String? = null
+    whatsAppNumber: String? = null,
+    bankName: String = "",
+    address: String = ""
 ) {
     val context = LocalContext.current
     var selectedSettleMode by remember { mutableStateOf("CASH") }
@@ -4970,7 +5033,7 @@ fun InvoiceDetailDialog(
                 ) {
                     Button(
                         onClick = {
-                            exportAndShareInvoicePdf(context, sale, businessName, isShare = true)
+                            exportAndShareInvoicePdf(context, sale, businessName, isShare = true, bankName = bankName, address = address)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = OrganicGreen),
                         modifier = Modifier.weight(1f),
@@ -4986,7 +5049,7 @@ fun InvoiceDetailDialog(
                             if (whatsAppNumber.isNullOrBlank()) {
                                 android.widget.Toast.makeText(context, "No WhatsApp number configured for this customer.", android.widget.Toast.LENGTH_LONG).show()
                             } else {
-                                exportAndShareInvoicePdf(context, sale, businessName, isShare = true, whatsAppNumber = whatsAppNumber)
+                                exportAndShareInvoicePdf(context, sale, businessName, isShare = true, whatsAppNumber = whatsAppNumber, bankName = bankName, address = address)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
@@ -5000,7 +5063,7 @@ fun InvoiceDetailDialog(
 
                     Button(
                         onClick = {
-                            exportAndShareInvoicePdf(context, sale, businessName, isShare = false)
+                            exportAndShareInvoicePdf(context, sale, businessName, isShare = false, bankName = bankName, address = address)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryMilk),
                         modifier = Modifier.weight(1f),
@@ -7669,7 +7732,9 @@ fun CustomersTab(
     onBackToDashboard: () -> Unit,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String, createdAt: Long) -> Unit,
     businessName: String = "Krishna Milk Depot",
-    ownerName: String
+    ownerName: String,
+    bankName: String = "",
+    address: String = ""
 ) {
     val currentLanguage = LocalAppLanguage.current
     var searchQuery by remember { mutableStateOf("") }
@@ -7684,7 +7749,9 @@ fun CustomersTab(
             onSettlePayment = onSettlePayment,
             onAddSale = onAddSale,
             businessName = businessName,
-            ownerName = ownerName
+            ownerName = ownerName,
+            bankName = bankName,
+            address = address
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -7958,7 +8025,9 @@ fun CustomerProfileView(
     onSettlePayment: (SaleEntity, String) -> Unit,
     onAddSale: (customerId: String, customerName: String, milkType: String, liters: Double, finalRate: Double, paymentType: String, createdAt: Long) -> Unit,
     businessName: String = "Krishna Milk Depot",
-    ownerName: String
+    ownerName: String,
+    bankName: String = "",
+    address: String = ""
 ) {
     val context = LocalContext.current
     val currentLanguage = LocalAppLanguage.current
@@ -8617,7 +8686,7 @@ fun CustomerProfileView(
                             if (selectedSales.isEmpty()) {
                                 Toast.makeText(context, "Select at least one record to share.", Toast.LENGTH_SHORT).show()
                             } else {
-                                shareSelectedSalesAsText(context, selectedSales, customer.name, businessName)
+                                shareSelectedSalesAsText(context, selectedSales, customer.name, businessName, bankName = bankName, address = address)
                             }
                         },
                         modifier = Modifier.background(MaterialTheme.colorScheme.surface, CircleShape)
@@ -8636,7 +8705,9 @@ fun CustomerProfileView(
                                     customerName = customer.name,
                                     phoneNumber = customer.phone,
                                     businessName = businessName,
-                                    isShare = false
+                                    isShare = false,
+                                    bankName = bankName,
+                                    address = address
                                 )
                             }
                         },
@@ -8658,7 +8729,9 @@ fun CustomerProfileView(
                                     phoneNumber = customer.phone,
                                     businessName = businessName,
                                     isShare = true,
-                                    whatsAppNumber = customer.phone
+                                    whatsAppNumber = customer.phone,
+                                    bankName = bankName,
+                                    address = address
                                 )
                             }
                         },
@@ -9020,7 +9093,9 @@ fun CustomerProfileView(
                 onSettlePayment(sale, mode)
                 selectedInvoiceForProfileDetail = null
             },
-            whatsAppNumber = customer.phone
+            whatsAppNumber = customer.phone,
+            bankName = bankName,
+            address = address
         )
     }
 }
