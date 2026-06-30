@@ -40,6 +40,8 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         _selectedUserFilter.value = user
     }
 
+    private val _backendUserNames = MutableStateFlow<List<String>>(emptyList())
+    
     val allUserNames: StateFlow<List<String>>
 
     private val _isSyncing = MutableStateFlow(false)
@@ -337,7 +339,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             milkInventoryDao = database.milkInventoryDao()
         )
 
-        allUserNames = combine(
+        val localRecordsFlow = combine(
             repository.customersFlow,
             repository.salesFlow,
             repository.pricesFlow,
@@ -349,6 +351,18 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             sls.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
             prcs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
             invs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
+            names
+        }
+
+        allUserNames = combine(
+            _backendUserNames,
+            localRecordsFlow
+        ) { backendUsers, localNames ->
+            val names = mutableSetOf<String>()
+            // Add backend users first (highest priority - they are source of truth)
+            names.addAll(backendUsers.filter { it.isNotBlank() })
+            // Then add names from local records for fallback
+            names.addAll(localNames)
             names.filter { it.isNotBlank() }.sorted()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -397,6 +411,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                         // 3. Bootstrap all latest data from backend server (Customers, Sales, Inventory, Prices)
                         val success = repository.bootstrapDataFromServer(application)
                         if (success) {
+                            // 4. Fetch backend users list for filter dropdown
+                            val backendUsers = repository.fetchUsersListFromServer(application)
+                            _backendUserNames.value = backendUsers
+                            android.util.Log.d("DairyViewModel", "Startup sync: Fetched ${backendUsers.size} backend users")
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 refreshProfileFromPrefs()
                                 refreshBrandingFromPrefs()
@@ -579,6 +597,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 // Perform real download bootstrap sync
                 val success = repository.bootstrapDataFromServer(getApplication())
                 if (success) {
+                    // Fetch backend users list for filter dropdown
+                    val backendUsers = repository.fetchUsersListFromServer(getApplication())
+                    _backendUserNames.value = backendUsers
+                    android.util.Log.d("DairyViewModel", "Manual sync: Fetched ${backendUsers.size} backend users")
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         refreshProfileFromPrefs()
                         refreshBrandingFromPrefs()
@@ -627,6 +649,11 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Fetch bootstrap data
                     repository.bootstrapDataFromServer(context)
+                    
+                    // Fetch backend users list for filter dropdown
+                    val backendUsers = repository.fetchUsersListFromServer(context)
+                    _backendUserNames.value = backendUsers
+                    android.util.Log.d("DairyViewModel", "Login: Fetched ${backendUsers.size} backend users")
                     
                     // Refresh branding/profile after bootstrap
                     refreshProfileFromPrefs()
