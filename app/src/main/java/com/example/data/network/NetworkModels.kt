@@ -202,19 +202,6 @@ data class SaleSaveResponse(
 )
 
 @JsonClass(generateAdapter = true)
-data class ShortUserDto(
-    val id: String,
-    val name: String
-)
-
-@JsonClass(generateAdapter = true)
-data class UsersListResponse(
-    val success: Boolean,
-    val error: String? = null,
-    val data: List<ShortUserDto>? = null
-)
-
-@JsonClass(generateAdapter = true)
 data class GenericResponse(
     val success: Boolean,
     val error: String? = null

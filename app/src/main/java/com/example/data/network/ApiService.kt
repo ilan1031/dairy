@@ -47,7 +47,4 @@ interface ApiService {
 
     @POST("data/branding/save")
     suspend fun saveBranding(@Body request: BrandingConfigDto): Response<BrandingSaveResponse>
-
-    @POST("data/users/list")
-    suspend fun listUsers(@Body request: Map<String, String> = emptyMap()): Response<UsersListResponse>
 }
