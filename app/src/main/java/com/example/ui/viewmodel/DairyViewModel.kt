@@ -40,6 +40,7 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
         _selectedUserFilter.value = user
     }
 
+    private val _backendUserNames = MutableStateFlow<List<String>>(emptyList())
     val allUserNames: StateFlow<List<String>>
 
     private val _isSyncing = MutableStateFlow(false)
@@ -342,9 +343,13 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
             repository.salesFlow,
             repository.pricesFlow,
             repository.inventoryFlow,
+            _backendUserNames,
             _ownerName
-        ) { custs, sls, prcs, invs, owner ->
+        ) { custs, sls, prcs, invs, backendUsers, owner ->
             val names = mutableSetOf<String>()
+            // First add backend users (highest priority - they are the source of truth)
+            names.addAll(backendUsers.filter { it.isNotBlank() })
+            // Then add names from local records for fallback
             custs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
             sls.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
             prcs.forEach { names.add(it.userName?.trim()?.takeIf { it.isNotBlank() } ?: owner) }
@@ -397,6 +402,9 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                         // 3. Bootstrap all latest data from backend server (Customers, Sales, Inventory, Prices)
                         val success = repository.bootstrapDataFromServer(application)
                         if (success) {
+                            // 4. Fetch backend users list for filter dropdown
+                            val backendUsers = repository.fetchUsersListFromServer(application)
+                            _backendUserNames.value = backendUsers
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 refreshProfileFromPrefs()
                                 refreshBrandingFromPrefs()
@@ -579,6 +587,9 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 // Perform real download bootstrap sync
                 val success = repository.bootstrapDataFromServer(getApplication())
                 if (success) {
+                    // Fetch backend users list for filter dropdown
+                    val backendUsers = repository.fetchUsersListFromServer(getApplication())
+                    _backendUserNames.value = backendUsers
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         refreshProfileFromPrefs()
                         refreshBrandingFromPrefs()
@@ -627,6 +638,10 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Fetch bootstrap data
                     repository.bootstrapDataFromServer(context)
+                    
+                    // Fetch backend users list for filter dropdown
+                    val backendUsers = repository.fetchUsersListFromServer(context)
+                    _backendUserNames.value = backendUsers
                     
                     // Refresh branding/profile after bootstrap
                     refreshProfileFromPrefs()
