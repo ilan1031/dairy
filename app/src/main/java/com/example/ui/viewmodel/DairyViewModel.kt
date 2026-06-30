@@ -605,7 +605,6 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     val mobile = auth.profile?.mobileNumber ?: "9876543210"
                     
                     sharedPrefs.edit()
-                        .putBoolean("is_logged_in", true)
                         .putString("business_name", bName)
                         .putString("owner_name", auth.profile?.ownerName ?: oName)
                         .putString("logged_in_user_name", oName)
@@ -614,13 +613,6 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                         .putString("password", passwordVal)
                         .putLong("last_login_timestamp", System.currentTimeMillis())
                         .apply()
-                    
-                    _isLoggedIn.value = true
-                    _businessName.value = bName
-                    _ownerName.value = oName
-                    _mobileNumber.value = mobile
-                    _emailAddress.value = emailVal
-                    _password.value = passwordVal
                     
                     // Migrate pre-existing offline data first
                     repository.syncUnsyncedData(context)
@@ -640,11 +632,24 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     refreshProfileFromPrefs()
                     refreshBrandingFromPrefs()
                     
+                    // Save logged-in state to sharedPrefs and publish to LiveData/StateFlow
+                    sharedPrefs.edit()
+                        .putBoolean("is_logged_in", true)
+                        .apply()
+                    
+                    _businessName.value = bName
+                    _ownerName.value = oName
+                    _mobileNumber.value = mobile
+                    _emailAddress.value = emailVal
+                    _password.value = passwordVal
+                    _isLoggedIn.value = true
+                    
                     null
                 } else {
                     response.body()?.error ?: "Invalid email address or password"
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 e.printStackTrace()
                 "Network error: ${e.message}"
             }
@@ -682,7 +687,6 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 val realMobile = auth.profile?.mobileNumber ?: mobile
                 
                 sharedPrefs.edit()
-                    .putBoolean("is_logged_in", true)
                     .putString("business_name", realBName)
                     .putString("owner_name", auth.profile?.ownerName ?: realOName)
                     .putString("logged_in_user_name", realOName)
@@ -691,13 +695,6 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                     .putString("password", pass)
                     .putLong("last_login_timestamp", System.currentTimeMillis())
                     .apply()
-                
-                _isLoggedIn.value = true
-                _businessName.value = realBName
-                _ownerName.value = realOName
-                _mobileNumber.value = realMobile
-                _emailAddress.value = em
-                _password.value = pass
                 
                 // Migrate pre-existing offline data first
                 repository.syncUnsyncedData(context)
@@ -717,11 +714,24 @@ class DairyViewModel(application: Application) : AndroidViewModel(application) {
                 refreshProfileFromPrefs()
                 refreshBrandingFromPrefs()
                 
+                // Save logged-in state to sharedPrefs and publish to LiveData/StateFlow
+                sharedPrefs.edit()
+                    .putBoolean("is_logged_in", true)
+                    .apply()
+                
+                _businessName.value = realBName
+                _ownerName.value = realOName
+                _mobileNumber.value = realMobile
+                _emailAddress.value = em
+                _password.value = pass
+                _isLoggedIn.value = true
+                
                 null
             } else {
                 response.body()?.error ?: "Failed to register business."
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             "Network error during registration: ${e.message}"
         }
